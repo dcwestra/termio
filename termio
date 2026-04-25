@@ -1,41 +1,56 @@
 #!/usr/bin/env sh
 # termio — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
-# Version 3.0.0
+# Version 3.4.0
 #
 # USAGE:
-#   termio [-v]                       Interactive TUI/CLI menu
-#   termio [-v] add                   Add a new SSH alias
-#   termio [-v] connect <alias>       Connect to a saved alias
-#   termio [-v] ls|list               List all aliases
-#   termio [-v] info   <alias>        Show alias details + fingerprint
-#   termio [-v] edit   <alias>        Edit an alias
-#   termio [-v] rm     <alias>        Remove an alias
-#   termio [-v] test   <alias>        Test connectivity
-#   termio [-v] rotate <alias>        Rotate SSH key for an alias
-#   termio [-v] export [file]         Export aliases to a portable file
-#   termio [-v] import <file>         Import aliases from export file
-#   termio       prefer [whiptail|cli] Show or set UI preference
-#   termio [-v] sync                  Show sync status
-#   termio [-v] sync init             Set up sync folder
-#   termio [-v] sync detach           Remove sync, restore files locally
-#   termio [-v] sync keys             Show key sync status
-#   termio [-v] sync keys enable      Opt in to encrypted key sync
-#   termio [-v] sync keys disable     Remove encrypted key archive
-#   termio [-v] sync keys update      Rebuild encrypted key archive
-#   termio [-v] snip                  List all snippets
-#   termio [-v] snip add              Add a new snippet
-#   termio [-v] snip run  <name>      Run a snippet on one or more hosts
-#   termio [-v] snip edit <name>      Edit a snippet
-#   termio [-v] snip rm   <name>      Remove a snippet
-#   termio [-v] snip info <name>      Show snippet details
-#   termio       version              Show version
-#   termio       help                 Show this help
+#   termio [-v]                              Interactive TUI/CLI menu
+#   termio [-v] add                          Add a new SSH alias
+#   termio [-v] connect <alias>              Connect to a saved alias
+#   termio [-v] ls|list [--group <g>]        List all aliases (optionally filter by group)
+#   termio [-v] info   <alias>               Show alias details + fingerprint
+#   termio [-v] edit   <alias>               Edit an alias
+#   termio [-v] rm     <alias>               Remove an alias
+#   termio [-v] test   <alias>               Test connectivity
+#   termio [-v] rotate <alias>               Rotate SSH key for an alias
+#   termio [-v] export [file]                Export aliases to a portable file
+#   termio [-v] import <file>                Import aliases from export file
+#   termio [-v] run    <alias> <cmd>         Run a one-off remote command
+#   termio [-v] copy   <src>   <dst>         Copy files via scp (alias:/path)
+#   termio [-v] status                       Test all connections (dashboard)
+#   termio [-v] audit                        Audit SSH key ages
+#   termio       prefer [whiptail|cli]       Show or set preferences
+#   termio       prefer audit_threshold <N>  Key rotation threshold (days)
+#   termio       prefer key_type <type>      Default key type (ed25519/rsa/ecdsa)
+#   termio [-v] sync                         Show sync status
+#   termio [-v] sync init                    Set up sync folder
+#   termio [-v] sync detach                  Remove sync, restore files locally
+#   termio [-v] sync keys                    Show key sync status
+#   termio [-v] sync keys enable             Opt in to encrypted key sync
+#   termio [-v] sync keys disable            Remove encrypted key archive
+#   termio [-v] sync keys update             Rebuild encrypted key archive
+#   termio [-v] snip                         List all snippets
+#   termio [-v] snip add                     Add a new snippet
+#   termio [-v] snip run  <name> [--group]   Run a snippet on one or more hosts
+#   termio [-v] snip edit <name>             Edit a snippet
+#   termio [-v] snip rm   <name>             Remove a snippet
+#   termio [-v] snip info <name>             Show snippet details
+#   termio [-v] tunnel                       List tunnels and status
+#   termio [-v] tunnel add <n> <alias> <fwd> Add a named port-forward tunnel
+#   termio [-v] tunnel start <name>          Start a tunnel
+#   termio [-v] tunnel stop  <name>          Stop a running tunnel
+#   termio [-v] tunnel rm    <name>          Remove a tunnel
+#   termio [-v] agent                        List alias keys in ssh-agent
+#   termio [-v] agent add [alias]            Load alias key(s) into agent
+#   termio [-v] agent rm  <alias>            Remove alias key from agent
+#   termio [-v] agent clear                  Remove all keys from agent
+#   termio       version                     Show version
+#   termio       help                        Show this help
 #
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.2.1"
+TERMIO_VERSION="3.4.0"
 
 set -e
 
@@ -355,17 +370,18 @@ alias_exists() {
 }
 
 # write_config_block <alias> <host> <user> <port> <keyfile>
-#                    <jump>  <note> <alive> <fwdagent> <localfwd>
+#                    <jump>  <note> <alive> <fwdagent> <localfwd> [group]
 write_config_block() {
     _a="$1"; _h="$2"; _u="$3"; _p="$4"; _k="$5"
     _j="$6"; _n="$7"; _alive="$8"; _fwda="$9"
-    shift 9; _lfwd="$1"
+    shift 9; _lfwd="$1"; _grp="${2:-}"
 
     touch "$CONFIG_FILE"; chmod 600 "$CONFIG_FILE"
     [ -s "$CONFIG_FILE" ] && printf '\n' >> "$CONFIG_FILE"
     {
         printf 'Host %s\n'              "$_a"
         [ -n "$_n"     ] && printf '    # Note: %s\n'             "$_n"
+        [ -n "$_grp"   ] && printf '    # Group: %s\n'            "$_grp"
         [ -n "$_j"     ] && printf '    # JumpAlias: %s\n'        "$_j"
         printf '    HostName %s\n'      "$_h"
         printf '    User %s\n'          "$_u"
@@ -412,12 +428,14 @@ sync_auto_export() {
             _fwda=$(get_field   "$_alias" "ForwardAgent")
             _lfwd=$(get_field   "$_alias" "LocalForward")
             _note=$(get_comment "$_alias" "Note")
+            _grp=$(get_comment  "$_alias" "Group")
             printf '[alias]\n'
             printf 'name=%s\n'     "$_alias"
             printf 'hostname=%s\n' "$_host"
             printf 'user=%s\n'     "$_user"
             printf 'port=%s\n'     "$_port"
             [ -n "$_note"  ] && printf 'note=%s\n'      "$_note"
+            [ -n "$_grp"   ] && printf 'group=%s\n'     "$_grp"
             [ -n "$_jump"  ] && printf 'jump=%s\n'      "$_jump"
             [ -n "$_alive" ] && printf 'keepalive=%s\n' "$_alive"
             [ -n "$_fwda"  ] && printf 'fwdagent=%s\n'  "$_fwda"
@@ -431,6 +449,17 @@ sync_auto_export() {
     _ts=$(date '+%Y-%m-%d %H:%M')
     pref_set "sync_last_export" "$_ts"
     vlog "sync_auto_export: done at $_ts"
+}
+
+# ── Key generation helper ────────────────────────────────────────────────────
+
+_keygen() {
+    _kf="$1"; _type="${2:-ed25519}"; _comment="$3"
+    case "$_type" in
+        rsa)   ssh-keygen -t rsa   -b 4096 -f "$_kf" -N "" -C "$_comment" >/dev/null 2>&1 ;;
+        ecdsa) ssh-keygen -t ecdsa -b 521  -f "$_kf" -N "" -C "$_comment" >/dev/null 2>&1 ;;
+        *)     ssh-keygen -t ed25519       -f "$_kf" -N "" -C "$_comment" >/dev/null 2>&1 ;;
+    esac
 }
 
 # ── Key copy helper ───────────────────────────────────────────────────────────
@@ -503,7 +532,7 @@ cmd_add() {
     [ "$HAS_WHIPTAIL" -eq 0 ] && {
         printf '\n  This will:\n'
         printf '    1. Collect connection details\n'
-        printf '    2. Generate a unique ed25519 key\n'
+        printf '    2. Generate a unique SSH key\n'
         printf '    3. Copy the public key to the remote (password used once)\n'
         printf '    4. Write a named alias to ~/.ssh/config\n'
         printf "    5. Connect with: ${C_BOLD}ssh <alias>${C_RESET}\n\n"
@@ -528,6 +557,9 @@ cmd_add() {
 
     wt_input "Short description / note (optional)" ""
     NOTE="$_PROMPT_RESULT"
+
+    wt_input "Group(s) / tags (optional, comma-separated, e.g. homelab,work)" ""
+    GROUP="$_PROMPT_RESULT"
 
     wt_input "Remote hostname or IP address" ""
     while [ -z "$_PROMPT_RESULT" ]; do
@@ -564,15 +596,22 @@ cmd_add() {
 
     prompt_advanced
 
+    _def_ktype=$(pref_get "key_type"); [ -z "$_def_ktype" ] && _def_ktype="ed25519"
+    wt_input "SSH key type (ed25519 / rsa / ecdsa)" "$_def_ktype"
+    case "$_PROMPT_RESULT" in
+        ed25519|rsa|ecdsa) KEY_TYPE="$_PROMPT_RESULT" ;;
+        *) KEY_TYPE="$_def_ktype"
+           [ -n "$_PROMPT_RESULT" ] && warn "Unknown key type — using $KEY_TYPE" ;;
+    esac
+
     mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
-    KEY_FILE="$SSH_DIR/id_ed25519_${ALIAS}"
+    KEY_FILE="$SSH_DIR/id_${KEY_TYPE}_${ALIAS}"
 
     if [ -f "$KEY_FILE" ]; then
         warn "Key already exists — reusing: $KEY_FILE"
     else
-        info "Generating ed25519 key: $KEY_FILE"
-        ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" \
-            -C "${REMOTE_USER}@${REMOTE_HOST}-${ALIAS}" >/dev/null 2>&1
+        info "Generating ${KEY_TYPE} key: $KEY_FILE"
+        _keygen "$KEY_FILE" "$KEY_TYPE" "${REMOTE_USER}@${REMOTE_HOST}-${ALIAS}"
         chmod 600 "$KEY_FILE"; chmod 644 "${KEY_FILE}.pub"
         success "Key generated."
     fi
@@ -584,7 +623,7 @@ cmd_add() {
     success "Public key copied. Password cleared from memory."
 
     write_config_block "$ALIAS" "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_PORT" \
-        "$KEY_FILE" "$JUMP_HOST" "$NOTE" "$ADV_ALIVE" "$ADV_FWDAGENT" "$ADV_LOCALFWD"
+        "$KEY_FILE" "$JUMP_HOST" "$NOTE" "$ADV_ALIVE" "$ADV_FWDAGENT" "$ADV_LOCALFWD" "$GROUP"
     success "Config written."
 
     sync_auto_export
@@ -600,13 +639,29 @@ cmd_add() {
 # ── LIST ──────────────────────────────────────────────────────────────────────
 
 cmd_list() {
+    _filter_group=""
+    case "${1:-}" in
+        --group|-g) _filter_group="${2:-}" ;;
+    esac
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
         printf '\n  No aliases found in %s\n\n' "$CONFIG_FILE"; return 0
     fi
+    if [ -n "$_filter_group" ]; then
+        _aliases=$(printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+            _g=$(get_comment "$_a" "Group")
+            printf '%s' "$_g" | tr ',' '\n' | tr -d ' ' | grep -qx "$_filter_group" \
+                && printf '%s\n' "$_a"
+        done)
+        if [ -z "$_aliases" ]; then
+            printf '\n  No aliases in group "%s".\n\n' "$_filter_group"; return 0
+        fi
+    fi
     printf '\n'
-    printf "${C_CYAN}${C_BOLD}  %-18s %-28s %-14s %-6s %s${C_RESET}\n" \
-        "ALIAS" "HOSTNAME" "USER" "PORT" "NOTE"
+    [ -n "$_filter_group" ] && \
+        printf "  ${C_DIM}Group filter: ${C_BOLD}%s${C_RESET}\n\n" "$_filter_group"
+    printf "${C_CYAN}${C_BOLD}  %-18s %-24s %-12s %-6s %-11s %s${C_RESET}\n" \
+        "ALIAS" "HOSTNAME" "USER" "PORT" "LAST" "NOTE/GROUP"
     printf '  '; printf '%.0s─' \
         1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
         21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
@@ -617,8 +672,14 @@ cmd_list() {
         _user=$(get_field   "$_alias" "User")
         _port=$(get_field   "$_alias" "Port"); [ -z "$_port" ] && _port="22"
         _note=$(get_comment "$_alias" "Note")
-        printf "  ${C_BOLD}%-18s${C_RESET} %-28s %-14s %-6s ${C_DIM}%s${C_RESET}\n" \
-            "$_alias" "$_host" "$_user" "$_port" "$_note"
+        _grp=$(get_comment  "$_alias" "Group")
+        _last=$(pref_get "last_connect_${_alias}")
+        _last_s=$(printf '%s' "${_last:-never}" | cut -c1-10)
+        _note_disp=""
+        [ -n "$_grp" ] && _note_disp="[${_grp}] "
+        _note_disp="${_note_disp}${_note}"
+        printf "  ${C_BOLD}%-18s${C_RESET} %-24s %-12s %-6s %-11s ${C_DIM}%s${C_RESET}\n" \
+            "$_alias" "$_host" "$_user" "$_port" "$_last_s" "$_note_disp"
     done
     printf '\n'
 }
@@ -638,9 +699,11 @@ cmd_info() {
     _fwda=$(get_field   "$_alias" "ForwardAgent")
     _lfwd=$(get_field   "$_alias" "LocalForward")
     _note=$(get_comment "$_alias" "Note")
+    _grp=$(get_comment  "$_alias" "Group")
     printf '\n'
     printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Alias:"       "$_alias"
     [ -n "$_note"  ] && printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Note:"        "$_note"
+    [ -n "$_grp"   ] && printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Group(s):"    "$_grp"
     printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Hostname:"    "$_host"
     printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "User:"        "$_user"
     printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Port:"        "$_port"
@@ -655,6 +718,8 @@ cmd_info() {
     else
         printf "  ${C_YELLOW}%-14s${C_RESET} (key file not found on disk)\n" "Key file:"
     fi
+    _last=$(pref_get "last_connect_$_alias")
+    [ -n "$_last" ] && printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} %s\n" "Last seen:" "$_last"
     printf "  ${C_CYAN}${C_BOLD}%-14s${C_RESET} ssh %s\n\n" "Connect:" "$_alias"
 }
 
@@ -673,11 +738,13 @@ cmd_edit() {
     _cf=$(get_field   "$_alias" "ForwardAgent")
     _cl=$(get_field   "$_alias" "LocalForward")
     _cn=$(get_comment "$_alias" "Note")
+    _cgrp=$(get_comment "$_alias" "Group")
 
     info "Editing ${C_BOLD}$_alias${C_RESET} — blank = keep current value"
     printf '\n'
-    wt_input "Note"            "$_cn"; _nn="${_PROMPT_RESULT:-$_cn}"
-    wt_input "Hostname or IP"  "$_ch"; _nh="${_PROMPT_RESULT:-$_ch}"
+    wt_input "Note"                    "$_cn";   _nn="${_PROMPT_RESULT:-$_cn}"
+    wt_input "Group(s) / tags"         "$_cgrp"; _ngrp="${_PROMPT_RESULT:-$_cgrp}"
+    wt_input "Hostname or IP"          "$_ch";   _nh="${_PROMPT_RESULT:-$_ch}"
     wt_input "SSH port"        "$_cp"; _np="${_PROMPT_RESULT:-$_cp}"
     case "$_np" in ''|*[!0-9]*) _np="$_cp" ;; esac
     wt_input "Remote username" "$_cu"; _nu="${_PROMPT_RESULT:-$_cu}"
@@ -703,7 +770,7 @@ cmd_edit() {
 
     remove_config_block "$_alias"
     write_config_block "$_alias" "$_nh" "$_nu" "$_np" \
-        "$_ck" "$_nj" "$_nn" "$_na" "$_nf" "$_nl"
+        "$_ck" "$_nj" "$_nn" "$_na" "$_nf" "$_nl" "$_ngrp"
     success "Alias \"$_alias\" updated."
 
     sync_auto_export
@@ -804,10 +871,17 @@ cmd_rotate() {
     wt_password "Remote password (to copy new key)"
     _pass="$_PROMPT_RESULT"
 
+    _old_type=$(basename "$_old_key" | awk -F'_' '{print $2}')
+    [ -z "$_old_type" ] && { _old_type=$(pref_get "key_type"); [ -z "$_old_type" ] && _old_type="ed25519"; }
+    wt_input "New key type (ed25519 / rsa / ecdsa)" "$_old_type"
+    case "$_PROMPT_RESULT" in
+        ed25519|rsa|ecdsa) _new_type="$_PROMPT_RESULT" ;;
+        *) _new_type="$_old_type" ;;
+    esac
+
     _new_key="${_old_key}_new"
-    info "Generating new key: $_new_key"
-    ssh-keygen -t ed25519 -f "$_new_key" -N "" \
-        -C "${_user}@${_host}-${_alias}-rotated" >/dev/null 2>&1
+    info "Generating new ${_new_type} key: $_new_key"
+    _keygen "$_new_key" "$_new_type" "${_user}@${_host}-${_alias}-rotated"
     chmod 600 "$_new_key"; chmod 644 "${_new_key}.pub"
     success "New key generated."
 
@@ -857,10 +931,12 @@ cmd_export() {
             _fwda=$(get_field   "$_alias" "ForwardAgent")
             _lfwd=$(get_field   "$_alias" "LocalForward")
             _note=$(get_comment "$_alias" "Note")
+            _grp=$(get_comment  "$_alias" "Group")
             printf '[alias]\n'
             printf 'name=%s\nhostname=%s\nuser=%s\nport=%s\n' \
                 "$_alias" "$_host" "$_user" "$_port"
             [ -n "$_note"  ] && printf 'note=%s\n'      "$_note"
+            [ -n "$_grp"   ] && printf 'group=%s\n'     "$_grp"
             [ -n "$_jump"  ] && printf 'jump=%s\n'      "$_jump"
             [ -n "$_alive" ] && printf 'keepalive=%s\n' "$_alive"
             [ -n "$_fwda"  ] && printf 'fwdagent=%s\n'  "$_fwda"
@@ -883,7 +959,8 @@ cmd_import() {
     printf '\n'; info "Reading aliases from: $_infile\n"
 
     _cur_name=""; _cur_host=""; _cur_user=""; _cur_port="22"
-    _cur_note=""; _cur_jump=""; _cur_alive=""; _cur_fwda=""; _cur_lfwd=""
+    _cur_note=""; _cur_grp=""; _cur_jump=""; _cur_alive=""; _cur_fwda=""; _cur_lfwd=""
+    _imp_ktype=$(pref_get "key_type"); [ -z "$_imp_ktype" ] && _imp_ktype="ed25519"
     _imported=0
 
     _do_import() {
@@ -898,13 +975,12 @@ cmd_import() {
             remove_config_block "$_cur_name"
         fi
         mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
-        _key="$SSH_DIR/id_ed25519_${_cur_name}"
+        _key="$SSH_DIR/id_${_imp_ktype}_${_cur_name}"
         if [ -f "$_key" ]; then
             warn "Existing key found — reusing: $_key"
         else
-            info "Generating key: $_key"
-            ssh-keygen -t ed25519 -f "$_key" -N "" \
-                -C "${_cur_user}@${_cur_host}-${_cur_name}" >/dev/null 2>&1
+            info "Generating $_imp_ktype key: $_key"
+            _keygen "$_key" "$_imp_ktype" "${_cur_user}@${_cur_host}-${_cur_name}"
             chmod 600 "$_key"; chmod 644 "${_key}.pub"
             success "Key generated."
         fi
@@ -914,7 +990,7 @@ cmd_import() {
             "$_cur_port" "$_pass" "$_cur_jump"
         unset _pass; success "Key copied."
         write_config_block "$_cur_name" "$_cur_host" "$_cur_user" "$_cur_port" \
-            "$_key" "$_cur_jump" "$_cur_note" "$_cur_alive" "$_cur_fwda" "$_cur_lfwd"
+            "$_key" "$_cur_jump" "$_cur_note" "$_cur_alive" "$_cur_fwda" "$_cur_lfwd" "$_cur_grp"
         success "\"$_cur_name\" imported."; printf '\n'
         _imported=$(( _imported + 1 ))
     }
@@ -924,12 +1000,13 @@ cmd_import() {
         case "$_line" in
             '[alias]')   _do_import
                          _cur_name=""; _cur_host=""; _cur_user=""; _cur_port="22"
-                         _cur_note=""; _cur_jump=""; _cur_alive=""; _cur_fwda=""; _cur_lfwd="" ;;
+                         _cur_note=""; _cur_grp=""; _cur_jump=""; _cur_alive=""; _cur_fwda=""; _cur_lfwd="" ;;
             name=*)      _cur_name="${_line#name=}" ;;
             hostname=*)  _cur_host="${_line#hostname=}" ;;
             user=*)      _cur_user="${_line#user=}" ;;
             port=*)      _cur_port="${_line#port=}" ;;
             note=*)      _cur_note="${_line#note=}" ;;
+            group=*)     _cur_grp="${_line#group=}" ;;
             jump=*)      _cur_jump="${_line#jump=}" ;;
             keepalive=*) _cur_alive="${_line#keepalive=}" ;;
             fwdagent=*)  _cur_fwda="${_line#fwdagent=}" ;;
@@ -944,22 +1021,85 @@ cmd_import() {
 
 # ── PREFER ────────────────────────────────────────────────────────────────────
 
+_cmd_prefer_alias() {
+    _pa="$1"; _pk="${2:-}"; _pv="${3:-}"
+    case "$_pk" in
+        auto_agent)
+            case "$_pv" in
+                on|yes)
+                    pref_set "auto_agent_$_pa" "yes"
+                    success "Auto agent-add enabled for ${C_BOLD}$_pa${C_RESET}."
+                    printf "  On connect, the alias key is loaded into ssh-agent automatically.\n\n" ;;
+                off|no|"")
+                    pref_set "auto_agent_$_pa" ""
+                    success "Auto agent-add disabled for ${C_BOLD}$_pa${C_RESET}.\n" ;;
+                *) die "auto_agent must be on or off" ;;
+            esac ;;
+        sshpass)
+            case "$_pv" in
+                clear|rm|remove|off)
+                    pref_set "sshpass_$_pa" ""
+                    success "Stored password cleared for ${C_BOLD}$_pa${C_RESET}.\n" ;;
+                "")
+                    _cur=$(pref_get "sshpass_$_pa")
+                    if [ -n "$_cur" ]; then
+                        warn "A password is already stored for $_pa."
+                        printf "  To clear it: ${C_BOLD}termio prefer $_pa sshpass clear${C_RESET}\n\n"
+                        wt_yesno "Overwrite stored password for \"$_pa\"?" || return 0
+                    fi
+                    printf '\n'
+                    warn "Password will be stored in obfuscated form (not encrypted)."
+                    printf "  For security-sensitive hosts, prefer key-based authentication.\n\n"
+                    command -v sshpass >/dev/null 2>&1 || \
+                        die "sshpass not installed — needed for password auth"
+                    wt_password "SSH password for $_pa"
+                    [ -z "$_PROMPT_RESULT" ] && { warn "No password entered. Nothing saved.\n"; return 0; }
+                    _enc=$(printf '%s' "$_PROMPT_RESULT" | base64)
+                    unset _PROMPT_RESULT
+                    pref_set "sshpass_$_pa" "$_enc"
+                    unset _enc
+                    success "Password stored for ${C_BOLD}$_pa${C_RESET}."
+                    printf "  termio connect $_pa        — auto-fills password\n"
+                    printf "  termio connect $_pa --sshpass  — one-time prompt (override)\n\n" ;;
+                *) die "Usage: termio prefer $_pa sshpass  OR  termio prefer $_pa sshpass clear" ;;
+            esac ;;
+        "")
+            _aa=$(pref_get "auto_agent_$_pa")
+            _sp=$(pref_get "sshpass_$_pa")
+            printf '\n  Per-alias preferences for: %s\n\n' "$_pa"
+            printf "    auto_agent:  %s\n" "${_aa:-off}"
+            printf "    sshpass:     %s\n\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
+            printf "  ${C_BOLD}termio prefer %s auto_agent on|off${C_RESET}\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s sshpass${C_RESET}       — store password\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET} — remove stored password\n\n" "$_pa" ;;
+        *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass)" ;;
+    esac
+}
+
 cmd_prefer() {
-    _mode="${1:-}"
+    _mode="${1:-}"; _val="${2:-}"; _val3="${3:-}"
     if [ -z "$_mode" ]; then
         _cur=$(pref_get "ui")
+        _thresh=$(pref_get "audit_threshold")
         printf '\n'
         case "$_cur" in
             whiptail) printf "  Current UI preference: ${C_BOLD}${C_CYAN}whiptail${C_RESET}\n" ;;
             cli)      printf "  Current UI preference: ${C_BOLD}${C_GREEN}cli${C_RESET}\n" ;;
             *)        printf "  Current UI preference: ${C_DIM}not set (auto-detect)${C_RESET}\n" ;;
         esac
-        printf "  Whiptail installed:    %s\n\n" \
+        printf "  Whiptail installed:    %s\n" \
             "$([ "$_WHIPTAIL_INSTALLED" -eq 1 ] \
                 && printf "${C_GREEN}yes${C_RESET}" \
                 || printf "${C_YELLOW}no${C_RESET}")"
-        printf "  ${C_BOLD}termio prefer whiptail${C_RESET}  — use TUI dialogs\n"
-        printf "  ${C_BOLD}termio prefer cli${C_RESET}       — use plain terminal\n\n"
+        _ktype=$(pref_get "key_type")
+        printf "  Audit threshold:       %s days\n" "${_thresh:-90 (default)}"
+        printf "  Default key type:      %s\n\n" "${_ktype:-ed25519 (default)}"
+        printf "  ${C_BOLD}termio prefer whiptail${C_RESET}                    — use TUI dialogs\n"
+        printf "  ${C_BOLD}termio prefer cli${C_RESET}                         — use plain terminal\n"
+        printf "  ${C_BOLD}termio prefer key_type <type>${C_RESET}             — default key type\n"
+        printf "  ${C_BOLD}termio prefer audit_threshold <N>${C_RESET}         — key rotation threshold\n"
+        printf "  ${C_BOLD}termio prefer <alias> auto_agent on|off${C_RESET}   — auto-load key to agent\n"
+        printf "  ${C_BOLD}termio prefer <alias> sshpass${C_RESET}             — store password for alias\n\n"
         return 0
     fi
 
@@ -996,8 +1136,37 @@ cmd_prefer() {
             pref_set "ui" "cli"; HAS_WHIPTAIL=0
             success "UI preference set to ${C_BOLD}cli${C_RESET}."
             printf "  Whiptail will not be used even if installed.\n\n" ;;
+        key_type|key-type)
+            if [ -z "$_val" ]; then
+                _cur=$(pref_get "key_type")
+                printf '\n  Default key type: %s\n\n' "${_cur:-ed25519 (default)}"
+            else
+                case "$_val" in
+                    ed25519|rsa|ecdsa) ;;
+                    *) die "key_type must be ed25519, rsa, or ecdsa" ;;
+                esac
+                pref_set "key_type" "$_val"
+                success "Default key type set to ${C_BOLD}${_val}${C_RESET}."
+                printf "  New aliases will use %s keys. Existing keys are unchanged.\n\n" "$_val"
+            fi ;;
+        audit_threshold|audit-threshold)
+            if [ -z "$_val" ]; then
+                _cur=$(pref_get "audit_threshold")
+                printf '\n  Audit threshold: %s days\n\n' "${_cur:-90 (default)}"
+            else
+                case "$_val" in
+                    *[!0-9]*) die "audit_threshold must be a positive integer" ;;
+                esac
+                pref_set "audit_threshold" "$_val"
+                success "Audit threshold set to ${C_BOLD}${_val} days${C_RESET}."
+                printf "  Run ${C_BOLD}termio audit${C_RESET} to check all keys.\n\n"
+            fi ;;
         *)
-            die "Unknown preference: '$_mode'  (use: whiptail or cli)" ;;
+            if alias_exists "$_mode" 2>/dev/null; then
+                _cmd_prefer_alias "$_mode" "$_val" "$_val3"
+            else
+                die "Unknown preference: '$_mode'  (use: whiptail, cli, key_type, audit_threshold, or an alias name)"
+            fi ;;
     esac
 }
 
@@ -1288,7 +1457,9 @@ sync_keys_update() {
     vlog "sync_keys_update: rebuilding $_enc_file"
 
     # Collect all keys managed by termio
-    _key_list=$(find "$SSH_DIR" -maxdepth 1 -name 'id_ed25519_*' ! -name '*.pub' 2>/dev/null || true)
+    _key_list=$(find "$SSH_DIR" -maxdepth 1 \
+        \( -name 'id_ed25519_*' -o -name 'id_rsa_*' -o -name 'id_ecdsa_*' \) \
+        ! -name '*.pub' 2>/dev/null || true)
     if [ -z "$_key_list" ]; then
         vlog "sync_keys_update: no keys found — skipping"
         return 0
@@ -1552,7 +1723,7 @@ cmd_sync_keys() {
 
             mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
             _restored=0
-            for _kf in "$_tmpdir"/id_ed25519_*; do
+            for _kf in "$_tmpdir"/id_ed25519_* "$_tmpdir"/id_rsa_* "$_tmpdir"/id_ecdsa_*; do
                 [ -f "$_kf" ] || continue
                 case "$_kf" in *.pub) continue ;; esac
                 _name=$(basename "$_kf")
@@ -1780,9 +1951,17 @@ cmd_snip_rm() {
 # ── snip run ──────────────────────────────────────────────────────────────────
 
 cmd_snip_run() {
-    _name="$1"
-    [ -z "$_name" ] && die "Usage: termio snip run <name>"
+    _name="${1:-}"
+    [ -z "$_name" ] && die "Usage: termio snip run <name> [--group <tag>]"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
+    shift
+    _run_group=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --group|-g) shift; _run_group="${1:-}" ;;
+        esac
+        shift
+    done
 
     _rcmd=$(snip_get  "$_name" "cmd")
     _rdesc=$(snip_get "$_name" "desc")
@@ -1790,6 +1969,16 @@ cmd_snip_run() {
 
     _aliases=$(list_aliases)
     [ -z "$_aliases" ] && die "No SSH aliases configured. Add one with: termio add"
+
+    if [ -n "$_run_group" ]; then
+        _aliases=$(printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+            _g=$(get_comment "$_a" "Group")
+            printf '%s' "$_g" | tr ',' '\n' | tr -d ' ' | grep -qx "$_run_group" \
+                && printf '%s\n' "$_a"
+        done)
+        [ -z "$_aliases" ] && die "No aliases found in group \"$_run_group\""
+        info "Running snippet on group: ${C_BOLD}$_run_group${C_RESET}"
+    fi
 
     printf '\n'
     printf "${C_CYAN}${C_BOLD}  Snippet: %s${C_RESET}\n" "$_name"
@@ -1927,18 +2116,179 @@ _EONS
 # ── Snippet dispatcher ────────────────────────────────────────────────────────
 
 cmd_snip() {
-    case "${1:-list}" in
+    _ssub="${1:-list}"
+    shift 2>/dev/null || true
+    case "$_ssub" in
         list|ls)   cmd_snip_list ;;
         add)       cmd_snip_add ;;
-        info)      cmd_snip_info "${2:-}" ;;
-        edit)      cmd_snip_edit "${2:-}" ;;
-        rm|remove) cmd_snip_rm   "${2:-}" ;;
-        run)       cmd_snip_run  "${2:-}" ;;
-        *)         die "Unknown snip subcommand: '$1'  (use: list, add, info, edit, rm, run)" ;;
+        info)      cmd_snip_info "${1:-}" ;;
+        edit)      cmd_snip_edit "${1:-}" ;;
+        rm|remove) cmd_snip_rm   "${1:-}" ;;
+        run)       cmd_snip_run  "$@" ;;
+        *)         die "Unknown snip subcommand: '$_ssub'  (use: list, add, info, edit, rm, run)" ;;
     esac
 }
 
 # ── Whiptail display wrappers ─────────────────────────────────────────────────
+
+# Strip ANSI color codes from a string (POSIX-portable via actual ESC char)
+_strip_colors() {
+    _sc_esc=$(printf '\033')
+    printf '%s\n' "$1" | sed "s/${_sc_esc}\[[0-9;]*m//g"
+}
+
+# Scrollable msgbox — falls back to press-enter in CLI mode
+wt_scrollmsg() {
+    _title="$1"; _body="$2"
+    if [ "$HAS_WHIPTAIL" -eq 1 ]; then
+        whiptail --title "$_title" --scrolltext --msgbox "$_body" "$TH" "$TW" \
+            3>&1 1>&2 2>&3 || true
+    else
+        printf '\n%s\n\n  Press Enter to continue...' "$_body"
+        IFS= read -r _dummy
+    fi
+}
+
+# Plain-text tunnel status table (no ANSI) — used by wt and by _wt_tunnel_menu
+_wt_tunnel_status_text() {
+    _tnames=$(tunnel_list_names)
+    if [ -z "$_tnames" ]; then
+        printf 'No tunnels configured.\n\nAdd one:\n  termio tunnel add <name> <alias> <local>:<host>:<port>\n'
+        return 0
+    fi
+    printf '%-18s %-9s %-20s %-6s %s\n' "NAME" "STATUS" "ALIAS" "PID" "FORWARD"
+    printf '%.0s─' \
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+        21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+        41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
+        61 62 63 64 65 66 67 68 69 70 2>/dev/null
+    printf '\n'
+    printf '%s\n' "$_tnames" | while IFS= read -r _tn; do
+        [ -z "$_tn" ] && continue
+        _ta=$(tunnel_get "$_tn" "alias")
+        _tf=$(tunnel_get "$_tn" "forward")
+        if tunnel_is_running "$_tn"; then
+            _tp=$(tunnel_get_pid "$_tn")
+            printf '%-18s %-9s %-20s %-6s %s\n' "$_tn" "running" "$_ta" "$_tp" "$_tf"
+        else
+            printf '%-18s %-9s %-20s %-6s %s\n' "$_tn" "stopped" "$_ta" "-" "$_tf"
+        fi
+    done
+}
+
+# Plain-text agent list (no ANSI) — used by _wt_agent_menu
+_wt_agent_list_text() {
+    _loaded=$(ssh-add -l 2>/dev/null || true)
+    _aliases=$(list_aliases)
+    if [ -z "$_aliases" ]; then
+        printf 'No aliases configured.\n'; return 0
+    fi
+    printf '%-18s %-8s %s\n' "ALIAS" "LOADED" "KEY FILE"
+    printf '%.0s─' \
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+        21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+        41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 2>/dev/null
+    printf '\n'
+    printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+        [ -z "$_a" ] && continue
+        _key=$(get_field "$_a" "IdentityFile")
+        [ -z "$_key" ] && continue
+        _fp=""
+        [ -f "$_key" ] && _fp=$(ssh-keygen -lf "$_key" 2>/dev/null | awk '{print $2}')
+        if [ -n "$_fp" ] && printf '%s\n' "$_loaded" | grep -qF "$_fp"; then
+            printf '%-18s %-8s %s\n' "$_a" "yes" "$(basename "$_key")"
+        else
+            printf '%-18s %-8s %s\n' "$_a" "no" "$(basename "$_key")"
+        fi
+    done
+}
+
+# Whiptail status dashboard wrapper
+wt_status() {
+    _aliases=$(list_aliases)
+    if [ -z "$_aliases" ]; then
+        wt_msg "No aliases configured.\n\nAdd one with: termio add"
+        return 0
+    fi
+    whiptail --title "termio — Status" \
+        --infobox "Testing all aliases in parallel (timeout: 8s)..." 5 60
+    _timeout=8
+    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+    while IFS= read -r _a; do
+        [ -z "$_a" ] && continue
+        (
+            if ssh -F "$CONFIG_FILE" \
+                   -o BatchMode=yes \
+                   -o ConnectTimeout="$_timeout" \
+                   -o StrictHostKeyChecking=accept-new \
+                   "$_a" true 2>/dev/null; then
+                printf 'ok' > "$_tmpdir/$_a"
+            else
+                printf 'fail' > "$_tmpdir/$_a"
+            fi
+        ) &
+    done <<_EOWST
+$(printf '%s\n' "$_aliases")
+_EOWST
+    wait
+    _txt=$(
+        printf '%-18s %-24s %-14s %s\n' "ALIAS" "HOSTNAME" "STATUS" "LAST CONNECTED"
+        printf '%.0s─' \
+            1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+            21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+            41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
+            61 62 63 64 65 66 2>/dev/null
+        printf '\n'
+        printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+            [ -z "$_a" ] && continue
+            _h=$(get_field "$_a" "HostName")
+            _last=$(pref_get "last_connect_$_a")
+            _last_s=$(printf '%s' "${_last:-never}" | cut -c1-10)
+            if [ -f "$_tmpdir/$_a" ] && [ "$(cat "$_tmpdir/$_a")" = "ok" ]; then
+                printf '%-18s %-24s %-14s %s\n' "$_a" "$_h" "✔ reachable" "$_last_s"
+            else
+                printf '%-18s %-24s %-14s %s\n' "$_a" "$_h" "✘ unreachable" "$_last_s"
+            fi
+        done
+    )
+    rm -rf "$_tmpdir"
+    wt_scrollmsg "termio — Status Dashboard" "$_txt"
+}
+
+# Whiptail audit wrapper
+wt_audit() {
+    _threshold=$(pref_get "audit_threshold")
+    [ -z "$_threshold" ] && _threshold=90
+    _aliases=$(list_aliases)
+    if [ -z "$_aliases" ]; then
+        wt_msg "No aliases configured.\n\nAdd one with: termio add"
+        return 0
+    fi
+    _txt=$(
+        printf 'Key Age Audit  (threshold: %s days)\n' "$_threshold"
+        printf '%.0s─' \
+            1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+            21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+            41 42 43 44 2>/dev/null
+        printf '\n\n'
+        printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+            [ -z "$_a" ] && continue
+            _key=$(get_field "$_a" "IdentityFile")
+            if [ -z "$_key" ] || [ ! -f "$_key" ]; then
+                printf '  ⚠  %-18s key file not found\n' "$_a"
+                continue
+            fi
+            _kname=$(basename "$_key")
+            if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+                    2>/dev/null | grep -q .; then
+                printf '  ⚠  %-18s key >%s days old\n' "$_a" "$_threshold"
+            else
+                printf '  ✔  %-18s key is current\n' "$_a"
+            fi
+        done
+    )
+    wt_scrollmsg "termio — Key Age Audit" "$_txt"
+}
 
 wt_show_info() {
     _alias="$1"
@@ -2208,9 +2558,22 @@ _wt_snip_menu() {
 # connection gets a clean terminal, then redraws the banner on return.
 
 cmd_connect() {
-    _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio connect <alias>"
+    _use_agent=0; _use_sshpass=0; _alias=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --agent)   _use_agent=1 ;;
+            --sshpass) _use_sshpass=1 ;;
+            *)         _alias="$1" ;;
+        esac
+        shift
+    done
+    [ -z "$_alias" ] && die "Usage: termio connect <alias> [--agent] [--sshpass]"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+
+    # Apply per-alias preferences (flags override)
+    [ "$(pref_get "auto_agent_$_alias")" = "yes" ] && _use_agent=1
+    _stored_pw=$(pref_get "sshpass_$_alias")
+    [ -n "$_stored_pw" ] && [ "$_use_sshpass" -eq 0 ] && _use_sshpass=2
 
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
@@ -2219,27 +2582,575 @@ cmd_connect() {
     printf '\n'
     info "Connecting to ${C_BOLD}$_alias${C_RESET} (${_user}@${_host}:${_port})"
     printf "  Press ${C_BOLD}Ctrl+D${C_RESET} or type ${C_BOLD}exit${C_RESET} to return to termio.\n\n"
+    pref_set "last_connect_${_alias}" "$(date '+%Y-%m-%d %H:%M')"
 
-    # Give the user a moment to read, then hand off the terminal cleanly
+    # Auto-add key to agent if requested
+    if [ "$_use_agent" -eq 1 ]; then
+        _akey=$(get_field "$_alias" "IdentityFile")
+        if [ -n "$_akey" ] && [ -f "$_akey" ] && command -v ssh-add >/dev/null 2>&1; then
+            ssh-add "$_akey" 2>/dev/null && vlog "Key auto-added to agent for $_alias"
+        fi
+    fi
+
     sleep 0.4
     clear 2>/dev/null || printf '\033[2J\033[H'
 
-    # Run SSH — passes control of the terminal completely to SSH.
-    # set +e so a non-zero exit from SSH (e.g. Ctrl+C) doesn't kill termio.
     set +e
-    ssh -F "$CONFIG_FILE" "$_alias"
-    _ssh_exit=$?
+    if [ "$_use_sshpass" -eq 1 ]; then
+        command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
+        printf 'SSH password for %s@%s: ' "$_user" "$_host"
+        stty -echo 2>/dev/null; IFS= read -r _sp; stty echo 2>/dev/null; printf '\n'
+        SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
+        _ssh_exit=$?
+        unset _sp SSHPASS
+    elif [ "$_use_sshpass" -eq 2 ]; then
+        command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
+        _sp=$(printf '%s' "$_stored_pw" | base64 -d 2>/dev/null)
+        unset _stored_pw
+        SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
+        _ssh_exit=$?
+        unset _sp SSHPASS
+    else
+        ssh -F "$CONFIG_FILE" "$_alias"
+        _ssh_exit=$?
+    fi
     set -e
 
     clear 2>/dev/null || printf '\033[2J\033[H'
 
     if [ "$_ssh_exit" -ne 0 ] && [ "$_ssh_exit" -ne 130 ]; then
-        # 130 = Ctrl+C, not an error worth reporting
         warn "SSH exited with code $_ssh_exit"
     fi
+    unset _stored_pw _use_agent _use_sshpass
 }
 
+# ── RUN ───────────────────────────────────────────────────────────────────────
 
+cmd_run() {
+    _alias="$1"; shift
+    _cmd="$*"
+    [ -z "$_alias" ] && die "Usage: termio run <alias> <command>"
+    [ -z "$_cmd"   ] && die "Usage: termio run <alias> <command>"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+    _host=$(get_field "$_alias" "HostName")
+    _user=$(get_field "$_alias" "User")
+    _port=$(get_field "$_alias" "Port"); [ -z "$_port" ] && _port="22"
+    printf '\n'
+    info "Running on ${C_BOLD}$_alias${C_RESET} (${_user}@${_host}:${_port})"
+    printf "  ${C_BOLD}Command:${C_RESET} ${C_DIM}%s${C_RESET}\n\n" "$_cmd"
+    set +e
+    ssh -F "$CONFIG_FILE" \
+        -o BatchMode=yes \
+        -o ConnectTimeout=10 \
+        -o StrictHostKeyChecking=accept-new \
+        "$_alias" "$_cmd"
+    _rc=$?
+    set -e
+    printf '\n'
+    [ "$_rc" -eq 0 ] && success "Done." || warn "Command exited with code $_rc"
+    printf '\n'
+}
+
+# ── COPY ──────────────────────────────────────────────────────────────────────
+
+cmd_copy() {
+    _src="${1:-}"; _dst="${2:-}"
+    { [ -z "$_src" ] || [ -z "$_dst" ]; } && \
+        die "Usage: termio copy <alias>:/remote/path /local/path\n       termio copy /local/path <alias>:/remote/path"
+    command -v scp >/dev/null 2>&1 || die "scp not found — install openssh-client"
+    _alias=""
+    case "$_src" in *:*) _alias="${_src%%:*}" ;; esac
+    case "$_dst" in
+        *:*) [ -z "$_alias" ] && _alias="${_dst%%:*}" ;;
+    esac
+    [ -z "$_alias" ] && die "One path must be in <alias>:/path format (e.g. myserver:/etc/hosts)"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+    _host=$(get_field "$_alias" "HostName")
+    _user=$(get_field "$_alias" "User")
+    printf '\n'
+    info "Copying:  ${C_BOLD}$_src${C_RESET}  →  ${C_BOLD}$_dst${C_RESET}"
+    printf "  (via %s@%s using ~/.ssh/config)\n\n" "$_user" "$_host"
+    set +e
+    scp -F "$CONFIG_FILE" -r "$_src" "$_dst"
+    _rc=$?
+    set -e
+    printf '\n'
+    [ "$_rc" -eq 0 ] && success "Copy complete." || warn "scp exited with code $_rc"
+    printf '\n'
+}
+
+# ── STATUS DASHBOARD ──────────────────────────────────────────────────────────
+
+cmd_status() {
+    _aliases=$(list_aliases)
+    if [ -z "$_aliases" ]; then
+        printf '\n  No aliases configured. Add one with: termio add\n\n'; return 0
+    fi
+    _timeout=8
+    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+    printf '\n'
+    info "Testing all aliases in parallel (timeout: ${_timeout}s) ..."
+    printf '\n'
+    while IFS= read -r _a; do
+        [ -z "$_a" ] && continue
+        (
+            if ssh -F "$CONFIG_FILE" \
+                   -o BatchMode=yes \
+                   -o ConnectTimeout="$_timeout" \
+                   -o StrictHostKeyChecking=accept-new \
+                   "$_a" true 2>/dev/null; then
+                printf 'ok' > "$_tmpdir/$_a"
+            else
+                printf 'fail' > "$_tmpdir/$_a"
+            fi
+        ) &
+    done <<_EOST
+$(printf '%s\n' "$_aliases")
+_EOST
+    wait
+    printf "${C_CYAN}${C_BOLD}  %-18s %-26s %-15s %s${C_RESET}\n" \
+        "ALIAS" "HOSTNAME" "STATUS" "LAST CONNECTED"
+    printf '  '; printf '%.0s─' \
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+        21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+        41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
+        61 62 63 64 65 66 67 68 69 70 71 72 73 74 2>/dev/null; printf '\n'
+    while IFS= read -r _a; do
+        [ -z "$_a" ] && continue
+        _h=$(get_field "$_a" "HostName")
+        _last=$(pref_get "last_connect_$_a")
+        _last_s=$(printf '%s' "${_last:-never}" | cut -c1-10)
+        if [ -f "$_tmpdir/$_a" ] && [ "$(cat "$_tmpdir/$_a")" = "ok" ]; then
+            printf "  ${C_BOLD}%-18s${C_RESET}  %-24s  ${C_GREEN}✔ reachable  ${C_RESET}  %s\n" \
+                "$_a" "$_h" "$_last_s"
+        else
+            printf "  ${C_BOLD}%-18s${C_RESET}  %-24s  ${C_RED}✘ unreachable${C_RESET}  %s\n" \
+                "$_a" "$_h" "$_last_s"
+        fi
+    done <<_EOST2
+$(printf '%s\n' "$_aliases")
+_EOST2
+    rm -rf "$_tmpdir"
+    printf '\n'
+}
+
+# ── AUDIT ─────────────────────────────────────────────────────────────────────
+
+cmd_audit() {
+    _threshold=$(pref_get "audit_threshold")
+    [ -z "$_threshold" ] && _threshold=90
+    _aliases=$(list_aliases)
+    if [ -z "$_aliases" ]; then
+        printf '\n  No aliases configured.\n\n'; return 0
+    fi
+    printf '\n'
+    printf "${C_CYAN}${C_BOLD}  Key Age Audit${C_RESET}  (threshold: %s days)\n" "$_threshold"
+    printf '  '; printf '%.0s─' \
+        1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+        21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+        41 42 43 44 45 46 2>/dev/null; printf '\n\n'
+    _flagged=0; _ok=0
+    while IFS= read -r _a; do
+        [ -z "$_a" ] && continue
+        _key=$(get_field "$_a" "IdentityFile")
+        if [ -z "$_key" ] || [ ! -f "$_key" ]; then
+            printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key file not found\n" "$_a"
+            _flagged=$(( _flagged + 1 ))
+            continue
+        fi
+        _kname=$(basename "$_key")
+        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+                2>/dev/null | grep -q .; then
+            printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key >%s days old — " \
+                "$_a" "$_threshold"
+            printf "rotate: ${C_DIM}termio rotate %s${C_RESET}\n" "$_a"
+            _flagged=$(( _flagged + 1 ))
+        else
+            printf "  ${C_GREEN}✔${C_RESET}  ${C_BOLD}%-18s${C_RESET} key is current\n" "$_a"
+            _ok=$(( _ok + 1 ))
+        fi
+    done <<_EOAUDIT
+$(printf '%s\n' "$_aliases")
+_EOAUDIT
+    printf '\n'
+    if [ "$_flagged" -eq 0 ]; then
+        success "All ${_ok} key(s) within the ${_threshold}-day rotation window."
+    else
+        warn "${_flagged} key(s) flagged for rotation  (${_ok} current)"
+        printf "  Set threshold: ${C_BOLD}termio prefer audit_threshold <days>${C_RESET}\n"
+    fi
+    printf '\n'
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ── Tunnel management ─────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TUNNEL_FILE="$CONF_DIR/tunnels"
+TUNNEL_PID_DIR="$CONF_DIR/tunnel-pids"
+
+tunnel_list_names() {
+    [ -f "$TUNNEL_FILE" ] || return 0
+    awk '/^\[tunnel\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
+        "$TUNNEL_FILE" 2>/dev/null || true
+}
+
+tunnel_get() {
+    [ -f "$TUNNEL_FILE" ] || { printf ''; return; }
+    awk -v tgt="$1" -v fld="$2" '
+        /^\[tunnel\]/ { matched=0 }
+        /^name=/ { if (substr($0,6)==tgt) matched=1 }
+        matched && $0 ~ "^"fld"=" { print substr($0, length(fld)+2); exit }
+    ' "$TUNNEL_FILE"
+}
+
+tunnel_exists() { tunnel_list_names | grep -qx "$1" 2>/dev/null; }
+
+tunnel_remove_block() {
+    [ -f "$TUNNEL_FILE" ] || return 0
+    awk -v tgt="$1" '
+        /^\[tunnel\]/ { buf=""; skip=0 }
+        { buf = buf $0 "\n" }
+        /^name=/ && substr($0,6)==tgt { skip=1 }
+        /^$/ { if (!skip) printf "%s", buf; buf=""; skip=0 }
+        END  { if (!skip && buf!="") printf "%s", buf }
+    ' "$TUNNEL_FILE" > "${TUNNEL_FILE}.tmp" \
+        && mv "${TUNNEL_FILE}.tmp" "$TUNNEL_FILE"
+}
+
+tunnel_write() {
+    mkdir -p "$CONF_DIR"; touch "$TUNNEL_FILE"
+    {
+        printf '\n[tunnel]\n'
+        printf 'name=%s\n'    "$1"
+        printf 'alias=%s\n'   "$2"
+        printf 'forward=%s\n' "$3"
+        printf 'created=%s\n' "$(date '+%Y-%m-%d %H:%M')"
+        printf '\n'
+    } >> "$TUNNEL_FILE"
+}
+
+tunnel_is_running() {
+    _pf="$TUNNEL_PID_DIR/$1.pid"
+    [ -f "$_pf" ] || return 1
+    _tp=$(cat "$_pf" 2>/dev/null)
+    [ -z "$_tp" ] && return 1
+    kill -0 "$_tp" 2>/dev/null
+}
+
+tunnel_get_pid() {
+    _pf="$TUNNEL_PID_DIR/$1.pid"
+    [ -f "$_pf" ] && cat "$_pf" 2>/dev/null || printf ''
+}
+
+cmd_tunnel() {
+    _sub="${1:-status}"
+    case "$_sub" in
+
+        add)
+            _tname="${2:-}"; _talias="${3:-}"; _tfwd="${4:-}"
+            { [ -z "$_tname" ] || [ -z "$_talias" ] || [ -z "$_tfwd" ]; } && \
+                die "Usage: termio tunnel add <name> <alias> <local_port>:<remote_host>:<remote_port>"
+            alias_exists "$_talias" || die "Alias \"$_talias\" not found."
+            case "$_tfwd" in *:*:*) : ;; *) die "Forward must be <local>:<host>:<remote_port>" ;; esac
+            if tunnel_exists "$_tname"; then
+                wt_yesno "Tunnel \"$_tname\" already exists. Overwrite?" || \
+                    { printf '  Aborting.\n\n'; return 0; }
+                if tunnel_is_running "$_tname"; then
+                    _tp=$(tunnel_get_pid "$_tname")
+                    kill "$_tp" 2>/dev/null || true
+                    rm -f "$TUNNEL_PID_DIR/$_tname.pid"
+                fi
+                tunnel_remove_block "$_tname"
+            fi
+            tunnel_write "$_tname" "$_talias" "$_tfwd"
+            success "Tunnel \"$_tname\" saved."
+            printf "  Start with: ${C_BOLD}termio tunnel start %s${C_RESET}\n\n" "$_tname"
+            ;;
+
+        start)
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel start <name>"
+            tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
+            if tunnel_is_running "$_tname"; then
+                _tp=$(tunnel_get_pid "$_tname")
+                info "Tunnel \"$_tname\" is already running (PID $_tp)."; return 0
+            fi
+            _ta=$(tunnel_get "$_tname" "alias")
+            _tf=$(tunnel_get "$_tname" "forward")
+            alias_exists "$_ta" || die "Alias \"$_ta\" no longer exists."
+            _th=$(get_field "$_ta" "HostName")
+            printf '\n'
+            info "Starting tunnel ${C_BOLD}$_tname${C_RESET}: -L $_tf  via ${_ta} (${_th})"
+            mkdir -p "$TUNNEL_PID_DIR"
+            set +e
+            ssh -F "$CONFIG_FILE" -N \
+                -o BatchMode=yes \
+                -o ExitOnForwardFailure=yes \
+                -o ConnectTimeout=10 \
+                -o StrictHostKeyChecking=accept-new \
+                -L "$_tf" "$_ta" &
+            _tp=$!
+            set -e
+            sleep 1
+            if kill -0 "$_tp" 2>/dev/null; then
+                printf '%s' "$_tp" > "$TUNNEL_PID_DIR/$_tname.pid"
+                success "Tunnel started  (PID $_tp)"
+                printf "  Stop with:  ${C_BOLD}termio tunnel stop %s${C_RESET}\n\n" "$_tname"
+            else
+                warn "Tunnel failed to start — check alias and forward spec."
+                printf '\n'
+            fi
+            ;;
+
+        stop)
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel stop <name>"
+            tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
+            if ! tunnel_is_running "$_tname"; then
+                info "Tunnel \"$_tname\" is not running."; return 0
+            fi
+            _tp=$(tunnel_get_pid "$_tname")
+            printf '\n'
+            kill "$_tp" 2>/dev/null && {
+                rm -f "$TUNNEL_PID_DIR/$_tname.pid"
+                success "Tunnel \"$_tname\" stopped (PID $_tp)."
+            } || warn "Could not stop tunnel PID $_tp"
+            printf '\n'
+            ;;
+
+        rm|remove)
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel rm <name>"
+            tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
+            printf '\n'
+            warn "About to remove tunnel \"${C_BOLD}$_tname${C_RESET}\""
+            printf '\n'
+            wt_yesno "Remove tunnel \"$_tname\"?" || { printf '  Aborting.\n\n'; return 0; }
+            if tunnel_is_running "$_tname"; then
+                _tp=$(tunnel_get_pid "$_tname")
+                kill "$_tp" 2>/dev/null && info "Stopped running tunnel (PID $_tp)." || true
+                rm -f "$TUNNEL_PID_DIR/$_tname.pid"
+            fi
+            tunnel_remove_block "$_tname"
+            success "Tunnel \"$_tname\" removed.\n"
+            ;;
+
+        ls|list|status)
+            _tnames=$(tunnel_list_names)
+            if [ -z "$_tnames" ]; then
+                printf '\n  No tunnels configured.\n'
+                printf "  Add one: ${C_BOLD}termio tunnel add <name> <alias> <local>:<host>:<remote_port>${C_RESET}\n\n"
+                return 0
+            fi
+            printf '\n'
+            printf "${C_CYAN}${C_BOLD}  %-18s %-9s %-20s %-6s %s${C_RESET}\n" \
+                "NAME" "STATUS" "ALIAS" "PID" "FORWARD"
+            printf '  '; printf '%.0s─' \
+                1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+                21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+                41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
+                61 62 63 64 65 66 67 68 69 70 71 72 73 74 2>/dev/null; printf '\n'
+            printf '%s\n' "$_tnames" | while IFS= read -r _tn; do
+                [ -z "$_tn" ] && continue
+                _ta=$(tunnel_get "$_tn" "alias")
+                _tf=$(tunnel_get "$_tn" "forward")
+                if tunnel_is_running "$_tn"; then
+                    _tp=$(tunnel_get_pid "$_tn")
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_GREEN}running${C_RESET}  %-20s %-6s %s\n" \
+                        "$_tn" "$_ta" "$_tp" "$_tf"
+                else
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_DIM}stopped${C_RESET}  %-20s %-6s %s\n" \
+                        "$_tn" "$_ta" "-" "$_tf"
+                fi
+            done
+            printf '\n'
+            ;;
+
+        *)
+            die "Unknown tunnel subcommand: '$_sub'  (use: add, start, stop, status, ls, rm)"
+            ;;
+    esac
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ── SSH agent integration ─────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+
+cmd_agent() {
+    _sub="${1:-list}"; _alias="${2:-}"
+    command -v ssh-add >/dev/null 2>&1 || die "ssh-add not found — install openssh-client"
+
+    case "$_sub" in
+
+        list|ls)
+            _loaded=$(ssh-add -l 2>/dev/null || true)
+            _aliases=$(list_aliases)
+            if [ -z "$_aliases" ]; then
+                printf '\n  No aliases configured.\n\n'; return 0
+            fi
+            printf '\n'
+            printf "${C_CYAN}${C_BOLD}  %-18s %-8s %s${C_RESET}\n" "ALIAS" "LOADED" "KEY FILE"
+            printf '  '; printf '%.0s─' \
+                1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+                21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+                41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 2>/dev/null; printf '\n'
+            printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+                [ -z "$_a" ] && continue
+                _key=$(get_field "$_a" "IdentityFile")
+                [ -z "$_key" ] && continue
+                _fp=""
+                [ -f "$_key" ] && _fp=$(ssh-keygen -lf "$_key" 2>/dev/null | awk '{print $2}')
+                if [ -n "$_fp" ] && printf '%s\n' "$_loaded" | grep -qF "$_fp"; then
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_GREEN}yes${C_RESET}     %s\n" \
+                        "$_a" "$(basename "$_key")"
+                else
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_DIM}no${C_RESET}      %s\n" \
+                        "$_a" "$(basename "$_key")"
+                fi
+            done
+            printf '\n'
+            ;;
+
+        add)
+            if [ -z "$_alias" ]; then
+                _aliases=$(list_aliases)
+                printf '\n'
+                printf '%s\n' "$_aliases" | while IFS= read -r _a; do
+                    [ -z "$_a" ] && continue
+                    _key=$(get_field "$_a" "IdentityFile")
+                    { [ -z "$_key" ] || [ ! -f "$_key" ]; } && continue
+                    ssh-add "$_key" 2>/dev/null \
+                        && success "Added key for: $_a" \
+                        || warn "Could not add key for: $_a"
+                done
+                printf '\n'
+            else
+                alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+                _key=$(get_field "$_alias" "IdentityFile")
+                [ -z "$_key" ] && die "No key configured for alias \"$_alias\""
+                [ -f "$_key" ] || die "Key file not found: $_key"
+                printf '\n'
+                ssh-add "$_key" && success "Key added to agent for $_alias."
+                printf '\n'
+            fi
+            ;;
+
+        rm|remove)
+            [ -z "$_alias" ] && die "Usage: termio agent rm <alias>"
+            alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+            _key=$(get_field "$_alias" "IdentityFile")
+            [ -z "$_key" ] && die "No key configured for alias \"$_alias\""
+            [ -f "$_key" ] || die "Key file not found: $_key"
+            printf '\n'
+            ssh-add -d "$_key" && success "Key removed from agent for $_alias."
+            printf '\n'
+            ;;
+
+        clear)
+            printf '\n'
+            warn "About to remove ALL keys from ssh-agent."
+            printf '\n'
+            if wt_yesno "Remove all keys from ssh-agent?"; then
+                ssh-add -D && success "All keys removed from ssh-agent."
+            else
+                printf '  Aborted.\n'
+            fi
+            printf '\n'
+            ;;
+
+        *)
+            die "Unknown agent subcommand: '$_sub'  (use: list, add, rm, clear)"
+            ;;
+    esac
+}
+
+# Whiptail tunnel submenu
+_wt_tunnel_menu() {
+    while true; do
+        _tc=$(whiptail --title "termio — Tunnels" \
+            --menu "SSH tunnel management" "$TH" "$TW" 6 \
+            "status" "List / status all tunnels" \
+            "add"    "Add a new tunnel" \
+            "start"  "Start a tunnel" \
+            "stop"   "Stop a running tunnel" \
+            "rm"     "Remove a tunnel" \
+            "back"   "Back to main menu" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$_tc" in
+            status)
+                wt_scrollmsg "termio — Tunnel Status" "$(_wt_tunnel_status_text)" ;;
+            add)
+                wt_input "Tunnel name" ""; [ -z "$_PROMPT_RESULT" ] && continue
+                _ttn="$_PROMPT_RESULT"
+                wt_pick_alias "Select SSH alias"; [ -z "$SELECTED_ALIAS" ] && continue
+                _tta="$SELECTED_ALIAS"
+                wt_input "Forward spec (local_port:remote_host:remote_port)" ""
+                if [ -n "$_PROMPT_RESULT" ]; then
+                    cmd_tunnel add "$_ttn" "$_tta" "$_PROMPT_RESULT"
+                    wt_scrollmsg "termio — Tunnels" "$(_wt_tunnel_status_text)"
+                fi ;;
+            start)
+                wt_input "Tunnel name to start" ""; [ -z "$_PROMPT_RESULT" ] && continue
+                _ttn="$_PROMPT_RESULT"
+                whiptail --title "termio — Tunnels" \
+                    --infobox "Starting tunnel \"$_ttn\"..." 5 50
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                cmd_tunnel start "$_ttn" >"$_tmpout" 2>&1
+                wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
+                rm -f "$_tmpout" ;;
+            stop)
+                wt_input "Tunnel name to stop" ""; [ -z "$_PROMPT_RESULT" ] && continue
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                cmd_tunnel stop "$_PROMPT_RESULT" >"$_tmpout" 2>&1
+                wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
+                rm -f "$_tmpout" ;;
+            rm)
+                wt_input "Tunnel name to remove" ""; [ -z "$_PROMPT_RESULT" ] && continue
+                cmd_tunnel rm "$_PROMPT_RESULT"
+                wt_scrollmsg "termio — Tunnels" "$(_wt_tunnel_status_text)" ;;
+            back|"") return 0 ;;
+        esac
+    done
+}
+
+# Whiptail agent submenu
+_wt_agent_menu() {
+    while true; do
+        _ac=$(whiptail --title "termio — SSH Agent" \
+            --menu "SSH agent key management" "$TH" "$TW" 5 \
+            "list"  "List alias keys loaded in agent" \
+            "add"   "Add alias key(s) to agent" \
+            "rm"    "Remove alias key from agent" \
+            "clear" "Clear all keys from agent" \
+            "back"  "Back to main menu" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$_ac" in
+            list)
+                wt_scrollmsg "termio — SSH Agent" "$(_wt_agent_list_text)" ;;
+            add)
+                wt_input "Alias name (blank = add all)" ""
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                cmd_agent add "$_PROMPT_RESULT" >"$_tmpout" 2>&1
+                wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
+                rm -f "$_tmpout" ;;
+            rm)
+                wt_pick_alias "Select alias to remove key from agent:"
+                if [ -n "$SELECTED_ALIAS" ]; then
+                    _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                    cmd_agent rm "$SELECTED_ALIAS" >"$_tmpout" 2>&1
+                    wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
+                    rm -f "$_tmpout"
+                fi ;;
+            clear)
+                if wt_yesno "Remove all keys from ssh-agent?"; then
+                    if ssh-add -D 2>/dev/null; then
+                        wt_msg "All keys removed from ssh-agent."
+                    else
+                        wt_msg "Failed to clear agent — is ssh-agent running?"
+                    fi
+                fi ;;
+            back|"") return 0 ;;
+        esac
+    done
+}
 
 # Whiptail sync submenu
 _wt_sync_menu() {
@@ -2313,10 +3224,23 @@ MENU ITEMS
 
   test      Quick non-interactive connectivity check.
 
+  status    Test all aliases in parallel and show a color-coded
+            reachability dashboard.
+
+  run       One-off remote command without saving a snippet.
+            Example: termio run myserver "df -h"
+
+  copy      Copy files to/from a remote alias using scp.
+            Example: termio copy myserver:/etc/hosts /tmp/
+
   edit      Change any saved field for an alias.
 
   rotate    Generate a new key, deploy it to the remote, and
             retire the old one.
+
+  audit     Check all alias keys for age. Flags keys older than
+            the configured threshold (default: 90 days).
+            Set threshold: termio prefer audit_threshold <N>
 
   rm        Remove an alias and optionally delete its key file.
 
@@ -2325,9 +3249,18 @@ MENU ITEMS
   import    Load aliases from an export file.
 
   snip      Saved remote commands. Run one command across
-            multiple hosts at once; optional sudo support.
-            Sudo password is prompted per-host or shared —
-            never stored.
+            multiple hosts at once; supports --group filtering
+            and optional sudo. Password prompted, never stored.
+
+  tunnel    Named SSH port-forward profiles.
+            Add: termio tunnel add db-tun myserver 5432:localhost:5432
+            Then: termio tunnel start db-tun / stop / status
+
+  agent     Load or inspect alias keys in ssh-agent.
+            termio agent list  — show which alias keys are loaded
+            termio agent add [alias]  — load one or all keys
+            termio agent rm <alias>   — unload a specific key
+            termio agent clear        — remove all keys
 
   sync      Mirror aliases, snippets, and preferences to any
             folder — NAS, cloud drive, or USB.
@@ -2335,6 +3268,7 @@ MENU ITEMS
             private keys. Passphrase is never stored anywhere.
 
   prefs     Switch between TUI (whiptail) and plain CLI mode.
+            Set default key type: termio prefer key_type ed25519
 
   quit      Exit termio.
 
@@ -2382,16 +3316,22 @@ interactive_menu() {
         while true; do
             _title=$(_wt_title)
             CHOICE=$(whiptail --title "$_title" \
-                --menu "Choose an action:" "$TH" "$TW" 14 \
+                --menu "Choose an action:" "$TH" "$TW" 18 \
                 "connect" "Connect to a saved alias" \
                 "add"     "Add a new SSH alias" \
+                "run"     "Run a one-off remote command" \
+                "copy"    "Copy files to/from alias (scp)" \
                 "info"    "Show alias details" \
                 "test"    "Test a connection" \
+                "status"  "Status dashboard — test all connections" \
                 "edit"    "Edit an alias" \
                 "rotate"  "Rotate key for an alias" \
                 "rm"      "Remove an alias" \
                 "export"  "Export aliases to file" \
                 "import"  "Import aliases from file" \
+                "audit"   "Audit SSH key ages" \
+                "tunnel"  "SSH tunnel management" \
+                "agent"   "SSH agent key management" \
                 "snip"    "Snippets — reusable remote commands" \
                 "sync"    "Sync settings & status" \
                 "prefs"   "UI preferences" \
@@ -2403,11 +3343,48 @@ interactive_menu() {
                 connect) wt_pick_alias "Select alias to connect:" \
                              && cmd_connect "$SELECTED_ALIAS" ;;
                 add)    cmd_add ;;
+                run)
+                    wt_pick_alias "Select alias to run command on:"
+                    if [ -n "$SELECTED_ALIAS" ]; then
+                        wt_input "Command to run on ${SELECTED_ALIAS}" ""
+                        if [ -n "$_PROMPT_RESULT" ]; then
+                            _wt_run_alias="$SELECTED_ALIAS"
+                            _wt_run_cmd="$_PROMPT_RESULT"
+                            whiptail --title "termio — Run" \
+                                --infobox "Running on ${_wt_run_alias}..." 5 50
+                            _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                            set +e
+                            ssh -F "$CONFIG_FILE" \
+                                -o BatchMode=yes \
+                                -o ConnectTimeout=10 \
+                                -o StrictHostKeyChecking=accept-new \
+                                "$_wt_run_alias" "$_wt_run_cmd" >"$_tmpout" 2>&1
+                            _wt_rc=$?
+                            set -e
+                            _wt_out=$(cat "$_tmpout"); rm -f "$_tmpout"
+                            _wt_hdr="$(printf 'Command: %s\nAlias:   %s  (exit: %s)\n%s\n' \
+                                "$_wt_run_cmd" "$_wt_run_alias" "$_wt_rc" \
+                                "──────────────────────────────────────")"
+                            wt_scrollmsg "termio — Run: $_wt_run_alias" \
+                                "$(printf '%s\n%s' "$_wt_hdr" "$_wt_out")"
+                        fi
+                    fi ;;
+                copy)
+                    wt_input "Source (e.g. myserver:/etc/hosts  or  /local/file)" ""
+                    _csrc="$_PROMPT_RESULT"
+                    if [ -n "$_csrc" ]; then
+                        wt_input "Destination (e.g. /tmp/hosts  or  myserver:/path/)" ""
+                        [ -n "$_PROMPT_RESULT" ] && cmd_copy "$_csrc" "$_PROMPT_RESULT"
+                    fi ;;
                 info)   wt_pick_alias "Select alias to inspect:"  && wt_show_info   "$SELECTED_ALIAS" ;;
                 test)   wt_pick_alias "Select alias to test:"     && wt_test_alias "$SELECTED_ALIAS" ;;
+                status) wt_status ;;
                 edit)   wt_pick_alias "Select alias to edit:"     && cmd_edit   "$SELECTED_ALIAS" ;;
                 rotate) wt_pick_alias "Select alias to rotate:"   && cmd_rotate "$SELECTED_ALIAS" ;;
                 rm)     wt_pick_alias "Select alias to remove:"   && cmd_remove "$SELECTED_ALIAS" ;;
+                audit)  wt_audit ;;
+                tunnel) _wt_tunnel_menu ;;
+                agent)  _wt_agent_menu ;;
                 export)
                     _def="$HOME/termio-export-$(date +%Y%m%d).txt"
                     wt_input "Export file path" "$_def"
@@ -2439,6 +3416,12 @@ interactive_menu() {
             printf "  ${C_BOLD} 8)${C_RESET} Remove an alias\n"
             printf "  ${C_BOLD} 9)${C_RESET} Export aliases to file\n"
             printf "  ${C_BOLD}10)${C_RESET} Import aliases from file\n"
+            printf "  ${C_BOLD}11)${C_RESET} Run a one-off remote command\n"
+            printf "  ${C_BOLD}12)${C_RESET} Copy files to/from alias (scp)\n"
+            printf "  ${C_BOLD}13)${C_RESET} Status dashboard (test all connections)\n"
+            printf "  ${C_BOLD}14)${C_RESET} Audit SSH key ages\n"
+            printf "  ${C_BOLD}tu)${C_RESET} Tunnels (add / start / stop / status)\n"
+            printf "  ${C_BOLD}ag)${C_RESET} Agent (list / add / rm / clear)\n"
             printf "  ${C_BOLD}sn)${C_RESET} Snippets — reusable remote commands\n"
             printf "  ${C_BOLD}sy)${C_RESET} Sync (init / status / detach / keys)\n"
             printf "  ${C_BOLD} p)${C_RESET} UI preferences\n"
@@ -2478,6 +3461,84 @@ interactive_menu() {
                 10|import)
                     cli_prompt "Import file path" ""
                     [ -n "$_PROMPT_RESULT" ] && cmd_import "$_PROMPT_RESULT" ;;
+                11|run)
+                    cmd_list
+                    cli_prompt "Alias to run command on" ""
+                    [ -z "$_PROMPT_RESULT" ] && continue
+                    _run_a="$_PROMPT_RESULT"
+                    cli_prompt "Command to run on $_run_a" ""
+                    [ -n "$_PROMPT_RESULT" ] && cmd_run "$_run_a" "$_PROMPT_RESULT" ;;
+                12|copy)
+                    cli_prompt "Source (alias:/path or /local/path)" ""
+                    _cs="$_PROMPT_RESULT"
+                    cli_prompt "Destination (alias:/path or /local/path)" ""
+                    [ -n "$_cs" ] && [ -n "$_PROMPT_RESULT" ] && cmd_copy "$_cs" "$_PROMPT_RESULT" ;;
+                13|status)
+                    cmd_status ;;
+                14|audit)
+                    cmd_audit ;;
+                tu|tunnel)
+                    while true; do
+                        printf '\n'
+                        printf "  ${C_BOLD}1)${C_RESET} List / status all tunnels\n"
+                        printf "  ${C_BOLD}2)${C_RESET} Add a tunnel\n"
+                        printf "  ${C_BOLD}3)${C_RESET} Start a tunnel\n"
+                        printf "  ${C_BOLD}4)${C_RESET} Stop a tunnel\n"
+                        printf "  ${C_BOLD}5)${C_RESET} Remove a tunnel\n"
+                        printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
+                        cli_prompt "Choice" ""
+                        case "$_PROMPT_RESULT" in
+                            1|list|status) cmd_tunnel status ;;
+                            2|add)
+                                cli_prompt "Tunnel name" ""
+                                [ -z "$_PROMPT_RESULT" ] && continue
+                                _ttn="$_PROMPT_RESULT"
+                                cmd_list
+                                cli_prompt "SSH alias" ""
+                                [ -z "$_PROMPT_RESULT" ] && continue
+                                _tta="$_PROMPT_RESULT"
+                                cli_prompt "Forward spec (local_port:remote_host:remote_port)" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_tunnel add "$_ttn" "$_tta" "$_PROMPT_RESULT" ;;
+                            3|start)
+                                cmd_tunnel status
+                                cli_prompt "Tunnel name to start" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_tunnel start "$_PROMPT_RESULT" ;;
+                            4|stop)
+                                cmd_tunnel status
+                                cli_prompt "Tunnel name to stop" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_tunnel stop "$_PROMPT_RESULT" ;;
+                            5|rm|remove)
+                                cmd_tunnel status
+                                cli_prompt "Tunnel name to remove" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_tunnel rm "$_PROMPT_RESULT" ;;
+                            b|back|"") break ;;
+                            *) warn "Unknown option." ;;
+                        esac
+                    done ;;
+                ag|agent)
+                    while true; do
+                        printf '\n'
+                        printf "  ${C_BOLD}1)${C_RESET} List loaded keys\n"
+                        printf "  ${C_BOLD}2)${C_RESET} Add alias key(s) to agent\n"
+                        printf "  ${C_BOLD}3)${C_RESET} Remove alias key from agent\n"
+                        printf "  ${C_BOLD}4)${C_RESET} Clear all keys from agent\n"
+                        printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
+                        cli_prompt "Choice" ""
+                        case "$_PROMPT_RESULT" in
+                            1|list) cmd_agent list ;;
+                            2|add)
+                                cmd_list
+                                cli_prompt "Alias name (blank = add all)" ""
+                                cmd_agent add "$_PROMPT_RESULT" ;;
+                            3|rm|remove)
+                                cmd_list
+                                cli_prompt "Alias name" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_agent rm "$_PROMPT_RESULT" ;;
+                            4|clear) cmd_agent clear ;;
+                            b|back|"") break ;;
+                            *) warn "Unknown option." ;;
+                        esac
+                    done ;;
                 sn|snip|snippets)
                     while true; do
                         printf '\n'
@@ -2574,9 +3635,15 @@ cmd_help() {
     printf "    %-36s %s\n" "termio [-v] rm <alias>"         "Remove alias (+ optional key delete)"
     printf "    %-36s %s\n" "termio [-v] export [file]"      "Export aliases to portable file"
     printf "    %-36s %s\n" "termio [-v] import <file>"      "Import aliases from export file"
-    printf "    %-36s %s\n" "termio       prefer"            "Show current UI preference"
+    printf "    %-36s %s\n" "termio [-v] run <alias> <cmd>"  "Run a one-off remote command"
+    printf "    %-36s %s\n" "termio [-v] copy <src> <dst>"   "Copy files via scp (alias:/path)"
+    printf "    %-36s %s\n" "termio [-v] status"             "Test all connections (dashboard)"
+    printf "    %-36s %s\n" "termio [-v] audit"              "Audit SSH key ages"
+    printf "    %-36s %s\n" "termio       prefer"            "Show current preferences"
     printf "    %-36s %s\n" "termio       prefer whiptail"   "Use TUI (installs if needed)"
     printf "    %-36s %s\n" "termio       prefer cli"        "Use plain terminal always"
+    printf "    %-36s %s\n" "termio       prefer audit_threshold <N>" "Key rotation warning threshold"
+    printf "    %-36s %s\n" "termio       prefer key_type <type>" "Default key type (ed25519/rsa/ecdsa)"
     printf "    %-36s %s\n" "termio [-v] sync"               "Show sync status"
     printf "    %-36s %s\n" "termio [-v] sync init"          "Set up sync folder"
     printf "    %-36s %s\n" "termio [-v] sync detach"        "Detach from sync"
@@ -2587,10 +3654,20 @@ cmd_help() {
     printf "    %-36s %s\n" "termio [-v] sync keys restore"  "Restore keys from archive"
     printf "    %-36s %s\n" "termio [-v] snip"               "List all snippets"
     printf "    %-36s %s\n" "termio [-v] snip add"           "Add a new snippet"
-    printf "    %-36s %s\n" "termio [-v] snip run <n>"    "Run snippet on host(s)"
-    printf "    %-36s %s\n" "termio [-v] snip info <n>"   "Show snippet details"
-    printf "    %-36s %s\n" "termio [-v] snip edit <n>"   "Edit a snippet"
-    printf "    %-36s %s\n" "termio [-v] snip rm <n>"     "Remove a snippet"
+    printf "    %-36s %s\n" "termio [-v] snip run <n>"       "Run snippet on host(s)"
+    printf "    %-36s %s\n" "termio [-v] snip run <n> --group <g>" "Run snippet on group"
+    printf "    %-36s %s\n" "termio [-v] snip info <n>"      "Show snippet details"
+    printf "    %-36s %s\n" "termio [-v] snip edit <n>"      "Edit a snippet"
+    printf "    %-36s %s\n" "termio [-v] snip rm <n>"        "Remove a snippet"
+    printf "    %-36s %s\n" "termio [-v] tunnel"             "List tunnels and status"
+    printf "    %-36s %s\n" "termio [-v] tunnel add <n> <alias> <fwd>" "Add a named tunnel"
+    printf "    %-36s %s\n" "termio [-v] tunnel start <name>" "Start a tunnel"
+    printf "    %-36s %s\n" "termio [-v] tunnel stop  <name>" "Stop a running tunnel"
+    printf "    %-36s %s\n" "termio [-v] tunnel rm    <name>" "Remove a tunnel"
+    printf "    %-36s %s\n" "termio [-v] agent"              "List alias keys in ssh-agent"
+    printf "    %-36s %s\n" "termio [-v] agent add [alias]"  "Load alias key(s) into agent"
+    printf "    %-36s %s\n" "termio [-v] agent rm  <alias>"  "Remove alias key from agent"
+    printf "    %-36s %s\n" "termio [-v] agent clear"        "Remove all keys from agent"
     printf "    %-36s %s\n" "termio       version"           "Show version"
     printf "    %-36s %s\n" "termio       help|--help|-h"    "Show this help"
     printf '\n'
@@ -2598,9 +3675,10 @@ cmd_help() {
     printf "    -v | --verbose    Show background operations (sync, key gen, config writes)\n"
     printf '\n'
     printf "  ${C_BOLD}FEATURES${C_RESET}\n"
-    printf "    • Per-alias ed25519 keys in ~/.ssh/id_ed25519_<alias>\n"
+    printf "    • Per-alias keys: ed25519 (default), rsa-4096, or ecdsa-521\n"
     printf "    • Passwords never stored — used once then cleared from memory\n"
     printf "    • Jump / bastion host support via ProxyJump\n"
+    printf "    • Groups/tags — tag aliases and filter: termio ls --group homelab\n"
     printf "    • Optional: note, ServerAliveInterval, ForwardAgent, LocalForward\n"
     printf "    • Export/import for machine migration\n"
     printf "    • Sync via any folder-based provider (Nextcloud, Syncthing, Drive…)\n"
@@ -2610,7 +3688,15 @@ cmd_help() {
     printf "    • Snippets support sudo (password prompted per run, never stored)\n"
     printf "    • Snippets auto-exported to sync folder alongside aliases\n"
     printf "    • TUI (whiptail) or plain CLI — user preference, auto-installs whiptail\n"
-    printf "    • Config: ~/.config/termio/  |  Keys: ~/.ssh/id_ed25519_<alias>\n"
+    printf "    • run — one-off remote commands without saving a snippet\n"
+    printf "    • copy — scp wrapper using alias names (no host/port/key lookup needed)\n"
+    printf "    • status — parallel reachability dashboard for all aliases\n"
+    printf "    • audit — flag SSH keys older than N days (configurable threshold)\n"
+    printf "    • tunnel — named port-forward profiles, start/stop/status management\n"
+    printf "    • agent — load/unload per-alias keys in ssh-agent\n"
+    printf "    • Connection history tracked per alias (last seen in list/info)\n"
+    printf "    • Tab completion for bash + zsh — source termio-completion\n"
+    printf "    • Config: ~/.config/termio/  |  Keys: ~/.ssh/id_<type>_<alias>\n"
     printf '\n'
     printf "  ${C_BOLD}OPTIONAL DEPS${C_RESET}\n"
     printf "    sshpass  — non-interactive key copy\n"
@@ -2632,8 +3718,8 @@ check_deps
 case "${1:-}" in
     "")                interactive_menu ;;
     add)               cmd_add ;;
-    connect)           cmd_connect "${2:-}" ;;
-    ls|list)           cmd_list ;;
+    connect)           shift; cmd_connect "$@" ;;
+    ls|list)           shift; cmd_list "$@" ;;
     info)              cmd_info   "${2:-}" ;;
     test)              cmd_test   "${2:-}" ;;
     edit)              cmd_edit   "${2:-}" ;;
@@ -2641,9 +3727,15 @@ case "${1:-}" in
     rm|remove)         cmd_remove "${2:-}" ;;
     export)            cmd_export "${2:-}" ;;
     import)            cmd_import "${2:-}" ;;
-    prefer)            cmd_prefer "${2:-}" ;;
-    snip|snippets)     cmd_snip   "${2:-}" "${3:-}" ;;
+    prefer)            cmd_prefer "${2:-}" "${3:-}" "${4:-}" ;;
+    run)               _run_alias="${2:-}"; shift 2 2>/dev/null || true; cmd_run "$_run_alias" "$@" ;;
+    copy)              cmd_copy   "${2:-}" "${3:-}" ;;
+    status)            cmd_status ;;
+    audit)             cmd_audit ;;
+    snip|snippets)     shift; cmd_snip "$@" ;;
     sync)              cmd_sync   "${2:-}" "${3:-}" ;;
+    tunnel)            cmd_tunnel "${2:-}" "${3:-}" "${4:-}" "${5:-}" ;;
+    agent)             cmd_agent  "${2:-}" "${3:-}" ;;
     version|--version) printf 'termio version %s\n' "$TERMIO_VERSION" ;;
     help|--help|-h)    cmd_help ;;
     *)                 die "Unknown command: '$1'  (try: termio help)" ;;

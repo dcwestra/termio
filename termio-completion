@@ -1,0 +1,420 @@
+#!/usr/bin/env sh
+# termio — tab completion for bash and zsh
+#
+# INSTALL (bash):
+#   Option 1 (user):   echo '. /path/to/termio-completion' >> ~/.bashrc
+#   Option 2 (system): sudo cp termio-completion /etc/bash_completion.d/termio
+#
+# INSTALL (zsh):
+#   Option 1 (source): echo '. /path/to/termio-completion' >> ~/.zshrc
+#   Option 2 (fpath):  cp termio-completion ~/.zsh/completions/_termio
+#                      (the directory must be in your $fpath)
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
+
+_termio_aliases() {
+    grep '^Host ' "${HOME}/.ssh/config" 2>/dev/null \
+        | awk '{print $2}' | grep -v '^\*$'
+}
+
+_termio_snippets() {
+    awk '/^\[snippet\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
+        "${HOME}/.config/termio/snippets" 2>/dev/null
+}
+
+_termio_tunnels() {
+    awk '/^\[tunnel\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
+        "${HOME}/.config/termio/tunnels" 2>/dev/null
+}
+
+_termio_groups() {
+    grep '# Group:' "${HOME}/.ssh/config" 2>/dev/null \
+        | sed 's/.*# Group: *//' \
+        | tr ',' '\n' | tr -d ' ' | sort -u
+}
+
+# ── Bash completion ───────────────────────────────────────────────────────────
+
+if [ -n "${BASH_VERSION:-}" ]; then
+
+_termio_complete() {
+    local cur prev cword
+    local words=("${COMP_WORDS[@]}")
+    cword=$COMP_CWORD
+    cur="${words[$cword]}"
+    prev="${words[$((cword - 1))]}"
+
+    local main_cmds="add connect ls list info test edit rotate rm remove export import prefer run copy status audit tunnel agent snip sync version help"
+    local snip_subcmds="list ls add run info edit rm remove"
+    local sync_subcmds="status init detach keys"
+    local keys_subcmds="status enable disable update restore"
+    local tunnel_subcmds="add start stop status ls list rm remove"
+    local agent_subcmds="list ls add rm remove clear"
+    local pref_keys="whiptail cli audit_threshold key_type"
+
+    # Strip -v / --verbose for position accounting
+    local offset=0
+    [ "${words[1]}" = "-v" ] || [ "${words[1]}" = "--verbose" ] && offset=1
+    local subcmd="${words[$((1 + offset))]}"
+    local pos=$(( cword - offset ))
+
+    case "$pos" in
+        1)
+            COMPREPLY=($(compgen -W "$main_cmds" -- "$cur"))
+            return 0 ;;
+        2)
+            case "$subcmd" in
+                connect)
+                    COMPREPLY=($(compgen -W "$(_termio_aliases) --agent --sshpass" -- "$cur"))
+                    return 0 ;;
+                info|test|edit|rotate|rm|remove)
+                    COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                    return 0 ;;
+                run)
+                    COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                    return 0 ;;
+                ls|list)
+                    COMPREPLY=($(compgen -W "--group -g" -- "$cur"))
+                    return 0 ;;
+                snip|snippets)
+                    COMPREPLY=($(compgen -W "$snip_subcmds" -- "$cur"))
+                    return 0 ;;
+                sync)
+                    COMPREPLY=($(compgen -W "$sync_subcmds" -- "$cur"))
+                    return 0 ;;
+                tunnel)
+                    COMPREPLY=($(compgen -W "$tunnel_subcmds" -- "$cur"))
+                    return 0 ;;
+                agent)
+                    COMPREPLY=($(compgen -W "$agent_subcmds" -- "$cur"))
+                    return 0 ;;
+                prefer)
+                    COMPREPLY=($(compgen -W "$pref_keys $(_termio_aliases)" -- "$cur"))
+                    return 0 ;;
+            esac ;;
+        3)
+            case "$subcmd" in
+                connect)
+                    COMPREPLY=($(compgen -W "--agent --sshpass" -- "$cur"))
+                    return 0 ;;
+                ls|list)
+                    # After --group/-g, complete group names
+                    case "$prev" in
+                        --group|-g)
+                            COMPREPLY=($(compgen -W "$(_termio_groups)" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+                snip|snippets)
+                    local snip_sub="${words[$((2 + offset))]}"
+                    case "$snip_sub" in
+                        run|info|edit|rm|remove)
+                            COMPREPLY=($(compgen -W "$(_termio_snippets)" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+                sync)
+                    local sync_sub="${words[$((2 + offset))]}"
+                    case "$sync_sub" in
+                        keys)
+                            COMPREPLY=($(compgen -W "$keys_subcmds" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+                tunnel)
+                    local tun_sub="${words[$((2 + offset))]}"
+                    case "$tun_sub" in
+                        start|stop|rm|remove)
+                            COMPREPLY=($(compgen -W "$(_termio_tunnels)" -- "$cur"))
+                            return 0 ;;
+                        add)
+                            # third arg is tunnel name, no completion
+                            return 0 ;;
+                    esac ;;
+                agent)
+                    local agent_sub="${words[$((2 + offset))]}"
+                    case "$agent_sub" in
+                        add|rm|remove)
+                            COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+                prefer)
+                    local pref_sub="${words[$((2 + offset))]}"
+                    case "$pref_sub" in
+                        key_type|key-type)
+                            COMPREPLY=($(compgen -W "ed25519 rsa ecdsa" -- "$cur"))
+                            return 0 ;;
+                        auto_agent)
+                            COMPREPLY=($(compgen -W "on off" -- "$cur"))
+                            return 0 ;;
+                        sshpass)
+                            COMPREPLY=($(compgen -W "clear" -- "$cur"))
+                            return 0 ;;
+                        *)
+                            # Could be an alias name — complete per-alias pref keys
+                            COMPREPLY=($(compgen -W "auto_agent sshpass" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+            esac ;;
+        4)
+            case "$subcmd" in
+                snip|snippets)
+                    local snip_sub="${words[$((2 + offset))]}"
+                    case "$snip_sub" in
+                        run)
+                            COMPREPLY=($(compgen -W "--group -g" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+                tunnel)
+                    local tun_sub="${words[$((2 + offset))]}"
+                    case "$tun_sub" in
+                        add)
+                            # fourth arg is alias
+                            COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                            return 0 ;;
+                    esac ;;
+            esac ;;
+        5)
+            case "$subcmd" in
+                snip|snippets)
+                    local snip_sub="${words[$((2 + offset))]}"
+                    case "$snip_sub" in
+                        run)
+                            case "$prev" in
+                                --group|-g)
+                                    COMPREPLY=($(compgen -W "$(_termio_groups)" -- "$cur"))
+                                    return 0 ;;
+                            esac ;;
+                    esac ;;
+            esac ;;
+    esac
+    return 0
+}
+
+complete -F _termio_complete termio
+
+fi  # end bash
+
+# ── Zsh completion ────────────────────────────────────────────────────────────
+
+if [ -n "${ZSH_VERSION:-}" ]; then
+
+_termio() {
+    local state
+
+    local -a main_cmds
+    main_cmds=(
+        'add:Add a new SSH alias'
+        'connect:Connect to a saved alias'
+        'ls:List all aliases'
+        'list:List all aliases'
+        'info:Show alias details + fingerprint'
+        'test:Test SSH connectivity'
+        'edit:Edit an alias'
+        'rotate:Rotate SSH key for an alias'
+        'rm:Remove alias (+ optional key delete)'
+        'remove:Remove alias'
+        'export:Export aliases to portable file'
+        'import:Import aliases from export file'
+        'prefer:Show or set preferences'
+        'run:Run a one-off remote command'
+        'copy:Copy files to/from alias (scp)'
+        'status:Test all connections (dashboard)'
+        'audit:Audit SSH key ages'
+        'tunnel:SSH tunnel management'
+        'agent:SSH agent key management'
+        'snip:Snippet commands'
+        'sync:Sync commands'
+        'version:Show version'
+        'help:Show help'
+    )
+
+    local -a snip_cmds
+    snip_cmds=(
+        'list:List all snippets'
+        'add:Add a new snippet'
+        'run:Run snippet on host(s)'
+        'info:Show snippet details'
+        'edit:Edit a snippet'
+        'rm:Remove a snippet'
+    )
+
+    local -a sync_cmds
+    sync_cmds=(
+        'status:Show sync status'
+        'init:Set up sync folder'
+        'detach:Detach from sync'
+        'keys:Encrypted key sync'
+    )
+
+    local -a keys_cmds
+    keys_cmds=(
+        'status:Key sync status'
+        'enable:Enable encrypted key sync'
+        'disable:Disable & delete archive'
+        'update:Rebuild archive now'
+        'restore:Restore keys from archive'
+    )
+
+    local -a tunnel_cmds
+    tunnel_cmds=(
+        'add:Add a named tunnel'
+        'start:Start a tunnel'
+        'stop:Stop a running tunnel'
+        'status:List tunnel status'
+        'ls:List tunnel status'
+        'rm:Remove a tunnel'
+    )
+
+    local -a agent_cmds
+    agent_cmds=(
+        'list:List alias keys in agent'
+        'ls:List alias keys in agent'
+        'add:Load alias key(s) into agent'
+        'rm:Remove alias key from agent'
+        'clear:Remove all keys from agent'
+    )
+
+    local -a pref_opts
+    pref_opts=(
+        'whiptail:Use TUI dialogs'
+        'cli:Use plain terminal'
+        'audit_threshold:Set key audit threshold (days)'
+        'key_type:Set default key type (ed25519/rsa/ecdsa)'
+    )
+
+    _arguments -C \
+        '(-v --verbose)'{-v,--verbose}'[Enable verbose output]' \
+        '1: :->cmd' \
+        '*: :->args' && return
+
+    case "$state" in
+        cmd)
+            _describe 'termio command' main_cmds
+            ;;
+        args)
+            case "${words[2]}" in
+                connect)
+                    if (( CURRENT == 3 )); then
+                        local -a aliases
+                        aliases=(${(f)"$(_termio_aliases)"})
+                        _describe 'alias' aliases
+                    else
+                        _arguments '--agent[Auto-add key to ssh-agent]' \
+                                   '--sshpass[Use stored/prompted password]'
+                    fi
+                    ;;
+                info|test|edit|rotate|rm|remove)
+                    local -a aliases
+                    aliases=(${(f)"$(_termio_aliases)"})
+                    _describe 'alias' aliases
+                    ;;
+                run)
+                    if (( CURRENT == 3 )); then
+                        local -a aliases
+                        aliases=(${(f)"$(_termio_aliases)"})
+                        _describe 'alias' aliases
+                    fi
+                    ;;
+                ls|list)
+                    if (( CURRENT == 3 )); then
+                        _arguments '--group[Filter by group]:group:->grp' '-g[Filter by group]:group:->grp'
+                        if [[ "$state" == grp ]]; then
+                            local -a groups
+                            groups=(${(f)"$(_termio_groups)"})
+                            _describe 'group' groups
+                        fi
+                    fi
+                    ;;
+                snip|snippets)
+                    if (( CURRENT == 3 )); then
+                        _describe 'snip subcommand' snip_cmds
+                    elif (( CURRENT == 4 )); then
+                        case "${words[3]}" in
+                            run|info|edit|rm|remove)
+                                local -a snips
+                                snips=(${(f)"$(_termio_snippets)"})
+                                _describe 'snippet name' snips
+                                ;;
+                        esac
+                    elif (( CURRENT >= 5 )) && [[ "${words[3]}" == "run" ]]; then
+                        _arguments '--group[Filter by group]:group:->grp' '-g[Filter by group]:group:->grp'
+                        if [[ "$state" == grp ]]; then
+                            local -a groups
+                            groups=(${(f)"$(_termio_groups)"})
+                            _describe 'group' groups
+                        fi
+                    fi
+                    ;;
+                sync)
+                    if (( CURRENT == 3 )); then
+                        _describe 'sync subcommand' sync_cmds
+                    elif (( CURRENT == 4 )); then
+                        case "${words[3]}" in
+                            keys) _describe 'keys subcommand' keys_cmds ;;
+                        esac
+                    fi
+                    ;;
+                tunnel)
+                    if (( CURRENT == 3 )); then
+                        _describe 'tunnel subcommand' tunnel_cmds
+                    elif (( CURRENT == 4 )); then
+                        case "${words[3]}" in
+                            start|stop|rm|remove)
+                                local -a tunnels
+                                tunnels=(${(f)"$(_termio_tunnels)"})
+                                _describe 'tunnel name' tunnels
+                                ;;
+                        esac
+                    elif (( CURRENT == 5 )) && [[ "${words[3]}" == "add" ]]; then
+                        local -a aliases
+                        aliases=(${(f)"$(_termio_aliases)"})
+                        _describe 'alias' aliases
+                    fi
+                    ;;
+                agent)
+                    if (( CURRENT == 3 )); then
+                        _describe 'agent subcommand' agent_cmds
+                    elif (( CURRENT == 4 )); then
+                        case "${words[3]}" in
+                            add|rm|remove)
+                                local -a aliases
+                                aliases=(${(f)"$(_termio_aliases)"})
+                                _describe 'alias' aliases
+                                ;;
+                        esac
+                    fi
+                    ;;
+                prefer)
+                    if (( CURRENT == 3 )); then
+                        local -a all_pref_opts
+                        all_pref_opts=("$pref_opts[@]")
+                        local -a aliases
+                        aliases=(${(f)"$(_termio_aliases)"})
+                        _describe 'preference or alias' all_pref_opts
+                        _describe 'alias (per-alias prefs)' aliases
+                    elif (( CURRENT == 4 )); then
+                        case "${words[3]}" in
+                            key_type|key-type)
+                                _describe 'key type' \
+                                    ('ed25519:Modern elliptic curve (default)' \
+                                     'rsa:RSA 4096-bit (legacy compat)' \
+                                     'ecdsa:ECDSA 521-bit') ;;
+                            *)
+                                local -a alias_prefs
+                                alias_prefs=('auto_agent:Auto-add key to ssh-agent on connect' \
+                                             'sshpass:Store/manage password for alias')
+                                _describe 'per-alias preference' alias_prefs ;;
+                        esac
+                    elif (( CURRENT == 5 )); then
+                        case "${words[4]}" in
+                            auto_agent) _describe 'value' ('on:Enable' 'off:Disable') ;;
+                            sshpass)    _describe 'action' ('clear:Remove stored password') ;;
+                        esac
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+compdef _termio termio
+
+fi  # end zsh
