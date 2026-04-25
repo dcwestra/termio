@@ -1938,6 +1938,245 @@ cmd_snip() {
     esac
 }
 
+# ── Whiptail display wrappers ─────────────────────────────────────────────────
+
+wt_show_info() {
+    _alias="$1"
+    _host=$(get_field "$_alias" "HostName")
+    _user=$(get_field "$_alias" "User")
+    _port=$(get_field "$_alias" "Port"); [ -z "$_port" ] && _port="22"
+    _key=$(get_field "$_alias" "IdentityFile")
+    _jump=$(get_field "$_alias" "ProxyJump")
+    _alive=$(get_field "$_alias" "ServerAliveInterval")
+    _fwda=$(get_field "$_alias" "ForwardAgent")
+    _lfwd=$(get_field "$_alias" "LocalForward")
+    _note=$(get_comment "$_alias" "Note")
+    _fp=""
+    [ -f "$_key" ] && _fp=$(ssh-keygen -lf "$_key" 2>/dev/null | awk '{print $2}')
+    _txt=$(
+        printf '%-14s %s\n' "Alias:"       "$_alias"
+        [ -n "$_note"  ] && printf '%-14s %s\n' "Note:"        "$_note"
+        printf '%-14s %s\n' "Hostname:"    "$_host"
+        printf '%-14s %s\n' "User:"        "$_user"
+        printf '%-14s %s\n' "Port:"        "$_port"
+        [ -n "$_jump"  ] && printf '%-14s %s\n' "Jump host:"   "$_jump"
+        [ -n "$_alive" ] && printf '%-14s %s\n' "KeepAlive:"   "${_alive}s"
+        [ -n "$_fwda"  ] && printf '%-14s %s\n' "FwdAgent:"    "$_fwda"
+        [ -n "$_lfwd"  ] && printf '%-14s %s\n' "LocalFwd:"    "$_lfwd"
+        printf '%-14s %s\n' "Key file:"    "$_key"
+        if [ -n "$_fp" ]; then
+            printf '%-14s %s\n' "Fingerprint:" "$_fp"
+        else
+            printf '%-14s %s\n' "Key file:"    "(not found on disk)"
+        fi
+        printf '\n%-14s ssh %s\n' "Connect:" "$_alias"
+    )
+    whiptail --title "termio — Info: $_alias" \
+        --scrolltext --msgbox "$_txt" "$TH" "$TW"
+}
+
+wt_test_alias() {
+    _alias="$1"
+    _host=$(get_field "$_alias" "HostName")
+    _user=$(get_field "$_alias" "User")
+    _port=$(get_field "$_alias" "Port"); [ -z "$_port" ] && _port="22"
+    whiptail --title "termio — Test" \
+        --infobox "Testing $_alias (${_user}@${_host}:${_port})..." 5 60
+    _start=$(date +%s 2>/dev/null || printf '0')
+    if ssh -F "$CONFIG_FILE" \
+           -o BatchMode=yes \
+           -o ConnectTimeout=8 \
+           -o StrictHostKeyChecking=accept-new \
+           "$_alias" true 2>/dev/null; then
+        _end=$(date +%s 2>/dev/null || printf '0')
+        _elapsed=$(( _end - _start ))
+        wt_msg "Connection successful\n\n  Alias:  $_alias\n  Host:   ${_user}@${_host}:${_port}\n  Time:   ${_elapsed}s"
+    else
+        _code=$?
+        wt_msg "Connection FAILED (exit code $_code)\n\n  Alias: $_alias\n  Host:  ${_user}@${_host}:${_port}\n\nPossible causes:\n  - Host unreachable or firewall blocking port $_port\n  - Key not accepted — try: termio rotate $_alias\n  - Wrong details — check alias info"
+    fi
+}
+
+wt_snip_list() {
+    _names=$(snip_list_names)
+    if [ -z "$_names" ]; then
+        wt_msg "No snippets saved yet.\n\nUse Add to create one."; return 0
+    fi
+    _txt=$(
+        printf '%-22s %-5s %s\n' "NAME" "SUDO" "DESCRIPTION"
+        printf '%.0s─' \
+            1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+            21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+            41 42 43 44 45 46 47 48 49 50 2>/dev/null; printf '\n'
+        printf '%s\n' "$_names" | while IFS= read -r _n; do
+            [ -z "$_n" ] && continue
+            _d=$(snip_get "$_n" "desc")
+            _s=$(snip_get "$_n" "use_sudo")
+            _sf="no"; [ "$_s" = "yes" ] && _sf="yes"
+            printf '%-22s %-5s %s\n' "$_n" "$_sf" "$_d"
+        done
+    )
+    whiptail --title "termio — Snippets" \
+        --scrolltext --msgbox "$_txt" "$TH" "$TW"
+}
+
+wt_show_snip_info() {
+    _name="$1"
+    _desc=$(snip_get "$_name" "desc")
+    _cmd=$(snip_get  "$_name" "cmd")
+    _sudo=$(snip_get "$_name" "use_sudo")
+    _cre=$(snip_get  "$_name" "created")
+    _txt=$(
+        printf '%-12s %s\n' "Name:"    "$_name"
+        printf '%-12s %s\n' "Desc:"    "$_desc"
+        printf '%-12s %s\n' "sudo:"    "${_sudo:-no}"
+        printf '%-12s %s\n' "Created:" "$_cre"
+        printf '\n%-12s\n' "Command:"
+        printf '  %s\n' "$_cmd"
+    )
+    whiptail --title "termio — Snippet: $_name" \
+        --scrolltext --msgbox "$_txt" "$TH" "$TW"
+}
+
+wt_sync_status() {
+    _sync_path=$(pref_get "sync_path")
+    _last=$(pref_get "sync_last_export")
+    _ks=$(pref_get "keys_sync")
+    _klast=$(pref_get "keys_sync_last_update")
+    _kcount=$(pref_get "keys_sync_count")
+    _txt=$(
+        printf 'Sync Status\n'
+        printf '%.0s─' \
+            1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+            21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 2>/dev/null
+        printf '\n'
+        if [ -z "$_sync_path" ]; then
+            printf 'Sync folder:    not configured\n'
+            printf 'Use "init" in the sync menu to set up.\n'
+        else
+            printf '%-16s %s\n' "Sync folder:" "$_sync_path"
+            [ -d "$_sync_path" ] \
+                && printf '%-16s reachable\n'     "Folder status:" \
+                || printf '%-16s NOT reachable\n' "Folder status:"
+            _marker="$_sync_path/.termio-sync"
+            if [ -f "$_marker" ]; then
+                _init_date=$(awk -F'=' '/^init_date=/{print $2}' "$_marker")
+                _init_host=$(awk -F'=' '/^init_host=/{print $2}' "$_marker")
+                printf '%-16s %s (on %s)\n' "Initialised:" "$_init_date" "$_init_host"
+            fi
+            _export="$_sync_path/aliases-export.txt"
+            if [ -f "$_export" ]; then
+                _ecount=$(grep -c '^\[alias\]' "$_export" 2>/dev/null || printf '0')
+                printf '%-16s %s aliases\n' "Aliases export:" "$_ecount"
+            else
+                printf '%-16s not found\n' "Aliases export:"
+            fi
+            printf '%-16s %s\n' "Last export:" "${_last:-never}"
+            printf '\nKey sync:\n'
+            if [ "$_ks" = "enabled" ]; then
+                printf '  %-14s enabled\n'  "Status:"
+                printf '  %-14s %s\n'       "Keys:"        "${_kcount:-unknown}"
+                printf '  %-14s %s\n'       "Last update:" "${_klast:-never}"
+                [ -f "$_sync_path/keys.enc" ] \
+                    && printf '  %-14s present\n' "Archive:" \
+                    || printf '  %-14s missing\n' "Archive:"
+            else
+                printf '  %-14s disabled\n' "Status:"
+            fi
+            printf '\nSymlinks:\n'
+            _lp="$CONF_DIR/preferences"
+            if [ -L "$_lp" ]; then
+                printf '  preferences  ->  %s\n' "$(readlink "$_lp" 2>/dev/null || printf 'unknown')"
+            elif [ -f "$_lp" ]; then
+                printf '  preferences  (local, not synced)\n'
+            else
+                printf '  preferences  not found\n'
+            fi
+        fi
+    )
+    whiptail --title "termio — Sync Status" \
+        --scrolltext --msgbox "$_txt" "$TH" "$TW"
+}
+
+wt_sync_keys_status() {
+    _sync_path=$(pref_get "sync_path")
+    _ks=$(pref_get "keys_sync")
+    _last=$(pref_get "keys_sync_last_update")
+    _kcount=$(pref_get "keys_sync_count")
+    _txt=$(
+        printf 'Key Sync Status\n'
+        printf '%.0s─' \
+            1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+            21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 2>/dev/null
+        printf '\n'
+        if [ "$_ks" = "enabled" ]; then
+            printf '%-16s enabled\n' "Key sync:"
+            [ -n "$_sync_path" ] && [ -d "$_sync_path" ] \
+                && printf '%-16s reachable (%s)\n' "Sync folder:" "$_sync_path" \
+                || printf '%-16s not reachable\n'  "Sync folder:"
+            _enc="$_sync_path/keys.enc"
+            if [ -f "$_enc" ]; then
+                _size=$(wc -c < "$_enc" 2>/dev/null | tr -d ' ')
+                printf '%-16s present (%s bytes)\n' "Archive:" "$_size"
+            else
+                printf '%-16s not found\n' "Archive:"
+            fi
+            printf '%-16s %s\n' "Keys archived:" "${_kcount:-unknown}"
+            printf '%-16s %s\n' "Last updated:"  "${_last:-never}"
+            printf '\nSecurity note:\n'
+            printf '  Your passphrase is never stored.\n'
+            printf '  You will be prompted each time the archive\n'
+            printf '  is rebuilt or restored.\n'
+        else
+            printf '%-16s disabled\n' "Key sync:"
+            printf '\nUse Enable in the key sync menu to opt in.\n'
+        fi
+    )
+    whiptail --title "termio — Key Sync Status" \
+        --scrolltext --msgbox "$_txt" "$TH" "$TW"
+}
+
+wt_sync_keys_enable() {
+    _sync_path=$(pref_get "sync_path")
+    [ -z "$_sync_path" ] \
+        && { wt_msg "Sync not configured.\nRun sync init first."; return 1; }
+    [ -d "$_sync_path" ] \
+        && true || { wt_msg "Sync folder not reachable:\n$_sync_path"; return 1; }
+    command -v openssl >/dev/null 2>&1 \
+        || { wt_msg "openssl not found.\n\nInstall it:\n  Debian/Mint:  sudo apt install openssl\n  Fedora:       sudo dnf install openssl"; return 1; }
+    _ks=$(pref_get "keys_sync")
+    if [ "$_ks" = "enabled" ]; then
+        wt_msg "Key sync is already enabled.\n\nUse Update to rebuild the archive."; return 0
+    fi
+    whiptail --title "termio — Encrypted Key Sync" --scrolltext --msgbox \
+"Encrypted Key Sync — Opt In
+
+This feature stores your private SSH keys in an AES-256
+encrypted archive (keys.enc) inside your sync folder.
+
+What this means:
+  - Your keys travel with your sync provider
+  - Security depends on your passphrase strength AND
+    your sync provider's security
+  - The passphrase is NEVER stored anywhere by termio
+  - You will be prompted each time keys are archived
+    or restored
+  - AES-256-CBC with PBKDF2 (600,000 iterations)
+
+Recommended if:
+  - Your sync folder is on an encrypted volume or a
+    self-hosted provider you control (e.g. Nextcloud)
+  - You use a strong, unique passphrase
+  - You understand the risks
+
+Press OK to continue to the confirmation prompt." "$TH" "$TW"
+
+    if ! wt_yesno "Enable encrypted key sync?"; then return 0; fi
+    pref_set "keys_sync" "enabled"
+    wt_msg "Key sync enabled.\n\nBuilding the initial archive now..."
+    sync_keys_update
+}
+
 # ── Whiptail snippet submenu ──────────────────────────────────────────────────
 
 _wt_snip_menu() {
@@ -1953,10 +2192,10 @@ _wt_snip_menu() {
             "back" "Back to main menu" \
             3>&1 1>&2 2>&3) || break
         case "$_sc" in
-            list) cmd_snip_list ;;
+            list) wt_snip_list ;;
             add)  cmd_snip_add ;;
             run)  wt_pick_snippet "Select snippet to run:"    && cmd_snip_run  "$SELECTED_SNIPPET" ;;
-            info) wt_pick_snippet "Select snippet for info:"  && cmd_snip_info "$SELECTED_SNIPPET" ;;
+            info) wt_pick_snippet "Select snippet for info:"  && wt_show_snip_info "$SELECTED_SNIPPET" ;;
             edit) wt_pick_snippet "Select snippet to edit:"   && cmd_snip_edit "$SELECTED_SNIPPET" ;;
             rm)   wt_pick_snippet "Select snippet to remove:" && cmd_snip_rm   "$SELECTED_SNIPPET" ;;
             back|"") break ;;
@@ -2019,7 +2258,7 @@ _wt_sync_menu() {
         "back"    "Back to main menu" \
         3>&1 1>&2 2>&3) || return 0
     case "$_sc" in
-        status) cmd_sync_status ;;
+        status) wt_sync_status ;;
         init)   cmd_sync_init ;;
         detach) cmd_sync_detach ;;
         keys)
@@ -2031,7 +2270,11 @@ _wt_sync_menu() {
                 "update"  "Rebuild archive now" \
                 "restore" "Restore keys from archive" \
                 3>&1 1>&2 2>&3) || return 0
-            cmd_sync_keys "$_kc"
+            case "$_kc" in
+                status)  wt_sync_keys_status ;;
+                enable)  wt_sync_keys_enable ;;
+                *)       cmd_sync_keys "$_kc" ;;
+            esac
             ;;
     esac
 }
@@ -2051,6 +2294,75 @@ _wt_prefs_menu() {
         cli)      cmd_prefer cli ;;
         auto)     pref_set "ui" ""; success "Preference cleared — auto-detect." ;;
     esac
+}
+
+# Whiptail help screen
+wt_help() {
+    _ht=$(cat <<'HELPEOF'
+MENU ITEMS
+
+  connect   Open an SSH session to a saved alias.
+
+  add       Guided wizard — alias name, host, user, port, note,
+            optional jump/bastion host, and advanced SSH options.
+            Generates a unique ed25519 key and copies it to the
+            remote (password used once, never stored).
+
+  info      Full details for an alias: host, user, port, jump
+            host, key fingerprint, note.
+
+  test      Quick non-interactive connectivity check.
+
+  edit      Change any saved field for an alias.
+
+  rotate    Generate a new key, deploy it to the remote, and
+            retire the old one.
+
+  rm        Remove an alias and optionally delete its key file.
+
+  export    Write all aliases to a portable text file.
+
+  import    Load aliases from an export file.
+
+  snip      Saved remote commands. Run one command across
+            multiple hosts at once; optional sudo support.
+            Sudo password is prompted per-host or shared —
+            never stored.
+
+  sync      Mirror aliases, snippets, and preferences to any
+            folder — NAS, cloud drive, or USB.
+            Key sync (opt-in): AES-256 encrypted archive of
+            private keys. Passphrase is never stored anywhere.
+
+  prefs     Switch between TUI (whiptail) and plain CLI mode.
+
+  quit      Exit termio.
+
+KEYBOARD SHORTCUTS
+
+  Arrow keys    Navigate lists
+  Space         Toggle a checklist item on / off
+  Tab           Move between Ok and Cancel buttons
+  Enter         Confirm
+  Escape        Cancel current dialog
+
+NOTES
+
+  Aliases live in ~/.ssh/config — you can also connect with:
+    ssh <alias>
+
+  Each alias has its own key:  ~/.ssh/id_ed25519_<alias>
+  Revoking one host does not affect any other.
+
+  Passwords are never written to disk — used once then cleared.
+
+  Sync auto-exports after every alias or snippet change.
+  Key sync rebuilds the encrypted archive after add/rotate/rm.
+
+HELPEOF
+)
+    whiptail --title "termio v${TERMIO_VERSION} — Help" \
+        --scrolltext --msgbox "$_ht" "$TH" "$TW"
 }
 
 # Build whiptail title with sync status indicator
@@ -2091,19 +2403,26 @@ interactive_menu() {
                 connect) wt_pick_alias "Select alias to connect:" \
                              && cmd_connect "$SELECTED_ALIAS" ;;
                 add)    cmd_add ;;
-                info)   wt_pick_alias "Select alias to inspect:"  && cmd_info   "$SELECTED_ALIAS" ;;
-                test)   wt_pick_alias "Select alias to test:"     && cmd_test   "$SELECTED_ALIAS" ;;
+                info)   wt_pick_alias "Select alias to inspect:"  && wt_show_info   "$SELECTED_ALIAS" ;;
+                test)   wt_pick_alias "Select alias to test:"     && wt_test_alias "$SELECTED_ALIAS" ;;
                 edit)   wt_pick_alias "Select alias to edit:"     && cmd_edit   "$SELECTED_ALIAS" ;;
                 rotate) wt_pick_alias "Select alias to rotate:"   && cmd_rotate "$SELECTED_ALIAS" ;;
                 rm)     wt_pick_alias "Select alias to remove:"   && cmd_remove "$SELECTED_ALIAS" ;;
-                export) cmd_export ;;
+                export)
+                    _def="$HOME/termio-export-$(date +%Y%m%d).txt"
+                    wt_input "Export file path" "$_def"
+                    if [ -n "$_PROMPT_RESULT" ]; then
+                        _ef="$_PROMPT_RESULT"
+                        cmd_export "$_ef"
+                        wt_msg "Aliases exported to:\n$_ef"
+                    fi ;;
                 import)
                     wt_input "Path to import file" "$HOME/termio-export.txt"
                     [ -n "$_PROMPT_RESULT" ] && cmd_import "$_PROMPT_RESULT" ;;
                 snip)   _wt_snip_menu ;;
                 sync)   _wt_sync_menu ;;
                 prefs)  _wt_prefs_menu ;;
-                help)   cmd_help ;;
+                help)   wt_help ;;
                 quit|"") break ;;
             esac
         done
