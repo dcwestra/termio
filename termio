@@ -2522,22 +2522,21 @@ _wt_tunnel_status_text() {
         printf 'No tunnels configured.\n\nAdd one:\n  termio tunnel add <name> <alias> <local>:<host>:<port>\n'
         return 0
     fi
-    printf '%-18s %-9s %-20s %-6s %s\n' "NAME" "STATUS" "ALIAS" "PID" "FORWARD"
+    printf '%-18s %-9s %-20s %s\n' "NAME" "STATUS" "ALIAS" "FORWARD"
     printf '%.0s─' \
         1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
         21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
         41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
-        61 62 63 64 65 66 67 68 69 70 2>/dev/null
+        61 62 2>/dev/null
     printf '\n'
     printf '%s\n' "$_tnames" | while IFS= read -r _tn; do
         [ -z "$_tn" ] && continue
         _ta=$(tunnel_get "$_tn" "alias")
         _tf=$(tunnel_get "$_tn" "forward")
         if tunnel_is_running "$_tn"; then
-            _tp=$(tunnel_get_pid "$_tn")
-            printf '%-18s %-9s %-20s %-6s %s\n' "$_tn" "running" "$_ta" "$_tp" "$_tf"
+            printf '%-18s %-9s %-20s %s\n' "$_tn" "running" "$_ta" "$_tf"
         else
-            printf '%-18s %-9s %-20s %-6s %s\n' "$_tn" "stopped" "$_ta" "-" "$_tf"
+            printf '%-18s %-9s %-20s %s\n' "$_tn" "stopped" "$_ta" "$_tf"
         fi
     done
 }
@@ -3247,7 +3246,7 @@ _EOAUDIT
 # ═══════════════════════════════════════════════════════════════════════════════
 
 TUNNEL_FILE="$CONF_DIR/tunnels"
-TUNNEL_PID_DIR="$CONF_DIR/tunnel-pids"
+TUNNEL_SOCK_DIR="$CONF_DIR/tunnel-socks"
 
 tunnel_list_names() {
     [ -f "$TUNNEL_FILE" ] || return 0
@@ -3292,16 +3291,9 @@ tunnel_write() {
 }
 
 tunnel_is_running() {
-    _pf="$TUNNEL_PID_DIR/$1.pid"
-    [ -f "$_pf" ] || return 1
-    _tp=$(cat "$_pf" 2>/dev/null)
-    [ -z "$_tp" ] && return 1
-    kill -0 "$_tp" 2>/dev/null
-}
-
-tunnel_get_pid() {
-    _pf="$TUNNEL_PID_DIR/$1.pid"
-    [ -f "$_pf" ] && cat "$_pf" 2>/dev/null || printf ''
+    _sock="$TUNNEL_SOCK_DIR/$1.sock"
+    [ -S "$_sock" ] || return 1
+    ssh -O check -S "$_sock" placeholder 2>/dev/null
 }
 
 cmd_tunnel() {
@@ -3332,9 +3324,10 @@ cmd_tunnel() {
                 wt_yesno "Tunnel \"$_tname\" already exists. Overwrite?" || \
                     { printf '  Aborting.\n\n'; return 0; }
                 if tunnel_is_running "$_tname"; then
-                    _tp=$(tunnel_get_pid "$_tname")
-                    kill "$_tp" 2>/dev/null || true
-                    rm -f "$TUNNEL_PID_DIR/$_tname.pid"
+                    _ta_old=$(tunnel_get "$_tname" "alias")
+                    _sock="$TUNNEL_SOCK_DIR/$_tname.sock"
+                    ssh -O exit -S "$_sock" "$_ta_old" 2>/dev/null || true
+                    rm -f "$_sock"
                 fi
                 tunnel_remove_block "$_tname"
             fi
@@ -3347,8 +3340,7 @@ cmd_tunnel() {
             _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel start <name>"
             tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
             if tunnel_is_running "$_tname"; then
-                _tp=$(tunnel_get_pid "$_tname")
-                info "Tunnel \"$_tname\" is already running (PID $_tp)."; return 0
+                info "Tunnel \"$_tname\" is already running."; return 0
             fi
             _ta=$(tunnel_get "$_tname" "alias")
             _tf=$(tunnel_get "$_tname" "forward")
@@ -3360,24 +3352,30 @@ cmd_tunnel() {
                 socks)  _ssh_fwd_flag="-D" ;;
                 *)      _ssh_fwd_flag="-L" ;;
             esac
+            _sock="$TUNNEL_SOCK_DIR/$_tname.sock"
+            mkdir -p "$TUNNEL_SOCK_DIR"
+            # Remove stale socket left by a crashed SSH process
+            if [ -S "$_sock" ] && ! ssh -O check -S "$_sock" placeholder 2>/dev/null; then
+                vlog "Removing stale control socket: $_sock"
+                rm -f "$_sock"
+            fi
             printf '\n'
             info "Starting tunnel ${C_BOLD}$_tname${C_RESET} (${_tt}): ${_ssh_fwd_flag} $_tf  via ${_ta} (${_th})"
-            mkdir -p "$TUNNEL_PID_DIR"
             set +e
-            ssh -F "$CONFIG_FILE" -N \
+            ssh -F "$CONFIG_FILE" -N -f \
+                -M -S "$_sock" \
                 -o BatchMode=yes \
                 -o ExitOnForwardFailure=yes \
                 -o ConnectTimeout=10 \
                 -o StrictHostKeyChecking=accept-new \
-                "$_ssh_fwd_flag" "$_tf" "$_ta" &
-            _tp=$!
+                "$_ssh_fwd_flag" "$_tf" "$_ta"
+            _rc=$?
             set -e
-            sleep 1
-            if kill -0 "$_tp" 2>/dev/null; then
-                printf '%s' "$_tp" > "$TUNNEL_PID_DIR/$_tname.pid"
-                success "Tunnel started  (PID $_tp)"
+            if [ "$_rc" -eq 0 ]; then
+                success "Tunnel started."
                 printf "  Stop with:  ${C_BOLD}termio tunnel stop %s${C_RESET}\n\n" "$_tname"
             else
+                rm -f "$_sock"
                 warn "Tunnel failed to start — check alias and forward spec."
                 printf '\n'
             fi
@@ -3389,12 +3387,12 @@ cmd_tunnel() {
             if ! tunnel_is_running "$_tname"; then
                 info "Tunnel \"$_tname\" is not running."; return 0
             fi
-            _tp=$(tunnel_get_pid "$_tname")
+            _ta=$(tunnel_get "$_tname" "alias")
+            _sock="$TUNNEL_SOCK_DIR/$_tname.sock"
             printf '\n'
-            kill "$_tp" 2>/dev/null && {
-                rm -f "$TUNNEL_PID_DIR/$_tname.pid"
-                success "Tunnel \"$_tname\" stopped (PID $_tp)."
-            } || warn "Could not stop tunnel PID $_tp"
+            ssh -O exit -S "$_sock" "$_ta" 2>/dev/null || true
+            rm -f "$_sock"
+            success "Tunnel \"$_tname\" stopped."
             printf '\n'
             ;;
 
@@ -3406,9 +3404,10 @@ cmd_tunnel() {
             printf '\n'
             wt_yesno "Remove tunnel \"$_tname\"?" || { printf '  Aborting.\n\n'; return 0; }
             if tunnel_is_running "$_tname"; then
-                _tp=$(tunnel_get_pid "$_tname")
-                kill "$_tp" 2>/dev/null && info "Stopped running tunnel (PID $_tp)." || true
-                rm -f "$TUNNEL_PID_DIR/$_tname.pid"
+                _ta=$(tunnel_get "$_tname" "alias")
+                _sock="$TUNNEL_SOCK_DIR/$_tname.sock"
+                ssh -O exit -S "$_sock" "$_ta" 2>/dev/null && info "Stopped running tunnel." || true
+                rm -f "$_sock"
             fi
             tunnel_remove_block "$_tname"
             success "Tunnel \"$_tname\" removed.\n"
@@ -3422,25 +3421,24 @@ cmd_tunnel() {
                 return 0
             fi
             printf '\n'
-            printf "${C_LBLUE}${C_BOLD}  %-18s %-9s %-7s %-16s %-6s %s${C_RESET}\n" \
-                "NAME" "STATUS" "TYPE" "ALIAS" "PID" "FORWARD"
+            printf "${C_LBLUE}${C_BOLD}  %-18s %-9s %-7s %-16s %s${C_RESET}\n" \
+                "NAME" "STATUS" "TYPE" "ALIAS" "FORWARD"
             printf '  '; printf '%.0s─' \
                 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
                 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
                 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 \
-                61 62 63 64 65 66 67 68 69 70 71 72 73 74 2>/dev/null; printf '\n'
+                61 62 63 64 65 66 67 68 2>/dev/null; printf '\n'
             printf '%s\n' "$_tnames" | while IFS= read -r _tn; do
                 [ -z "$_tn" ] && continue
                 _ta=$(tunnel_get "$_tn" "alias")
                 _tf=$(tunnel_get "$_tn" "forward")
                 _tt=$(tunnel_get "$_tn" "type"); [ -z "$_tt" ] && _tt="local"
                 if tunnel_is_running "$_tn"; then
-                    _tp=$(tunnel_get_pid "$_tn")
-                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_GREEN}running${C_RESET}  %-7s %-16s %-6s %s\n" \
-                        "$_tn" "$_tt" "$_ta" "$_tp" "$_tf"
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_GREEN}running${C_RESET}  %-7s %-16s %s\n" \
+                        "$_tn" "$_tt" "$_ta" "$_tf"
                 else
-                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_DIM}stopped${C_RESET}  %-7s %-16s %-6s %s\n" \
-                        "$_tn" "$_tt" "$_ta" "-" "$_tf"
+                    printf "  ${C_BOLD}%-18s${C_RESET}  ${C_DIM}stopped${C_RESET}  %-7s %-16s %s\n" \
+                        "$_tn" "$_tt" "$_ta" "$_tf"
                 fi
             done
             printf '\n'
