@@ -73,6 +73,9 @@ PREF_FILE="$CONF_DIR/preferences"
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 
+# Whiptail/newt color theme — dark background, cyan accents, matches CLI palette
+export NEWT_COLORS='root=brightwhite,black:border=cyan,black:window=brightwhite,black:shadow=black,black:title=brightcyan,black:button=black,cyan:actbutton=black,brightcyan:checkbox=brightwhite,black:actcheckbox=black,cyan:entry=brightwhite,black:label=brightcyan,black:listbox=brightwhite,black:actlistbox=black,cyan:textbox=brightwhite,black:acttextbox=black,cyan:helpline=white,black:roottext=brightcyan,black:sellistbox=brightwhite,cyan:actsellistbox=black,brightcyan'
+
 C_RESET='\033[0m'
 C_BOLD='\033[1m'
 C_DIM='\033[2m'
@@ -97,12 +100,17 @@ vlog()    { [ "$TERMIO_VERBOSE" -eq 1 ] && printf "${C_DIM}  [v] %s${C_RESET}\n"
 
 # ── Display helpers ───────────────────────────────────────────────────────────
 
+# Convert "YYYY-MM-DD HH:MM" string to epoch seconds — GNU date -d or BSD date -j
+_ts_to_epoch() {
+    date -d "$1" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M" "$1" +%s 2>/dev/null
+}
+
 # Convert stored YYYY-MM-DD HH:MM timestamp to human-readable relative string
 _rel_time() {
     _rt_ts="$1"
     [ -z "$_rt_ts" ] && { printf 'never'; return; }
     _rt_now=$(date +%s)
-    _rt_then=$(date -d "$_rt_ts" +%s 2>/dev/null) || { printf '%s' "$_rt_ts" | cut -c1-10; return; }
+    _rt_then=$(_ts_to_epoch "$_rt_ts") || { printf '%s' "$_rt_ts" | cut -c1-10; return; }
     _rt_diff=$(( _rt_now - _rt_then ))
     if   [ "$_rt_diff" -lt 3600 ];    then printf 'just now'
     elif [ "$_rt_diff" -lt 86400 ];   then printf 'today'
@@ -182,7 +190,7 @@ pref_get() {
 
 pref_set() {
     mkdir -p "$CONF_DIR"
-    touch "$PREF_FILE"
+    touch "$PREF_FILE"; chmod 600 "$PREF_FILE"
     if grep -q "^$1=" "$PREF_FILE" 2>/dev/null; then
         awk -F'=' -v k="$1" -v v="$2" \
             'BEGIN{OFS="="} $1==k{$2=v} {print}' \
@@ -346,7 +354,8 @@ wt_input() {
     _label="$1"; _default="${2:-}"
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _PROMPT_RESULT=$(whiptail --inputbox "$_label" 8 64 "$_default" \
-            --title "termio v${TERMIO_VERSION}" 3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
+            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
     else
         cli_prompt "$_label" "$_default"
     fi
@@ -356,7 +365,8 @@ wt_password() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _PROMPT_RESULT=$(whiptail --passwordbox \
             "$1\n(used once — never saved)" \
-            10 64 --title "termio v${TERMIO_VERSION}" 3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
+            10 64 --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
     else
         cli_prompt_secret "$1"
     fi
@@ -364,7 +374,9 @@ wt_password() {
 
 wt_yesno() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-        whiptail --yesno "$1" 10 64 --title "termio v${TERMIO_VERSION}" 3>&1 1>&2 2>&3
+        whiptail --yesno "$1" 10 64 \
+            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            3>&1 1>&2 2>&3
         return $?
     else
         cli_prompt "$1 (y/N)" "N"
@@ -374,7 +386,8 @@ wt_yesno() {
 
 wt_msg() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-        whiptail --msgbox "$1" 14 64 --title "termio v${TERMIO_VERSION}" \
+        whiptail --msgbox "$1" 14 64 \
+            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
             3>&1 1>&2 2>&3 || true
     else
         printf '\n  %s\n\n  Press Enter to continue...' "$1"
@@ -796,7 +809,7 @@ cmd_unpin() {
     [ -z "$_ua" ] && die "Usage: termio unpin <alias>"
     _cur=$(pref_get "pinned_aliases")
     [ -z "$_cur" ] && { info "\"$_ua\" is not pinned."; return 0; }
-    _new=$(printf '%s' "$_cur" | tr ',' '\n' | grep -vx "$_ua" | tr '\n' ',' | sed 's/,$//')
+    _new=$(printf '%s' "$_cur" | tr ',' '\n' | grep -vx "$_ua" | tr '\n' ',' | sed 's/,$//' || true)
     pref_set "pinned_aliases" "$_new"
     success "\"$_ua\" unpinned."
 }
@@ -1357,7 +1370,8 @@ _cmd_prefer_alias() {
                     fi
                     printf '\n'
                     warn "Password will be stored in obfuscated form (not encrypted)."
-                    printf "  For security-sensitive hosts, prefer key-based authentication.\n\n"
+                    printf "  sshpass passes it via process environment — visible to root and in some logs.\n"
+                    printf "  For security-sensitive hosts, use key-based auth instead.\n\n"
                     command -v sshpass >/dev/null 2>&1 || \
                         die "sshpass not installed — needed for password auth"
                     wt_password "SSH password for $_pa"
@@ -2306,9 +2320,9 @@ cmd_snip_run() {
         done <<_EOAL
 $(printf '%s\n' "$_aliases")
 _EOAL
-        _sel=$(NEWT_COLORS='listbox=black,white:actlistbox=white,black:checkbox=black,white:actcheckbox=white,black' \
-            whiptail \
+        _sel=$(whiptail \
             --title "termio — Run Snippet" \
+            --backtitle "termio v${TERMIO_VERSION}" \
             --checklist "Select target host(s) — SPACE to toggle, ENTER to confirm:" \
             "$TH" "$TW" 10 \
             "$@" \
@@ -2492,7 +2506,8 @@ _strip_colors() {
 wt_scrollmsg() {
     _title="$1"; _body="$2"
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-        whiptail --title "$_title" --scrolltext --msgbox "$_body" "$TH" "$TW" \
+        whiptail --title "$_title" --backtitle "termio v${TERMIO_VERSION}" \
+            --scrolltext --msgbox "$_body" "$TH" "$TW" \
             3>&1 1>&2 2>&3 || true
     else
         printf '\n%s\n\n  Press Enter to continue...' "$_body"
@@ -2562,7 +2577,7 @@ wt_status() {
         return 0
     fi
     _timeout=8
-    _total=$(printf '%s\n' "$_aliases" | grep -c .)
+    _total=$(printf '%s\n' "$_aliases" | grep -c . || true)
     whiptail --title "termio — Status" \
         --infobox "Testing ${_total} aliases in parallel (timeout: ${_timeout}s)..." 5 60
     _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
@@ -2950,6 +2965,7 @@ cmd_connect() {
     set +e
     if [ "$_use_sshpass" -eq 1 ]; then
         command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
+        info "Password used for this session only — not retained after disconnect."
         printf 'SSH password for %s@%s: ' "$_user" "$_host"
         stty -echo 2>/dev/null; IFS= read -r _sp; stty echo 2>/dev/null; printf '\n'
         SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
@@ -2957,6 +2973,7 @@ cmd_connect() {
         unset _sp SSHPASS
     elif [ "$_use_sshpass" -eq 2 ]; then
         command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
+        warn "Password auth via sshpass — consider key-based auth: termio rotate $_alias"
         _sp=$(printf '%s' "$_stored_pw" | base64 -d 2>/dev/null)
         unset _stored_pw
         SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
@@ -3101,7 +3118,7 @@ cmd_status() {
     fi
     _timeout=8
     _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
-    _total=$(printf '%s\n' "$_aliases" | grep -c .)
+    _total=$(printf '%s\n' "$_aliases" | grep -c . || true)
 
     # Launch parallel SSH probes with ms latency measurement
     while IFS= read -r _a; do
@@ -4290,11 +4307,12 @@ cmd_help() {
     printf "    • Optional: note, ServerAliveInterval, ForwardAgent, LocalForward\n"
     printf "    • Export/import for machine migration\n"
     printf "    • Sync via any folder-based provider (Nextcloud, Syncthing, Drive…)\n"
-    printf "    • Aliases auto-exported to sync folder after every change\n"
+    printf "    • Aliases auto-exported to sync on: add, edit, rm, rotate, import\n"
+    printf "    • Key sync archive rebuilt on: add, rm, rotate (when key sync is enabled)\n"
     printf "    • Encrypted key sync opt-in — AES-256-CBC, PBKDF2, passphrase never stored\n"
     printf "    • Snippets — named reusable commands, run sequentially on any host(s)\n"
     printf "    • Snippets support sudo (password prompted per run, never stored)\n"
-    printf "    • Snippets auto-exported to sync folder alongside aliases\n"
+    printf "    • Snippets auto-exported to sync on: snip add, snip edit, snip rm\n"
     printf "    • TUI (whiptail) or plain CLI — user preference, auto-installs whiptail\n"
     printf "    • run — one-off remote commands without saving a snippet\n"
     printf "    • copy — scp wrapper using alias names (no host/port/key lookup needed)\n"
