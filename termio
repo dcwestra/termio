@@ -687,6 +687,7 @@ $(printf '%s\n' "$_aliases")
 _EOF
     SELECTED_ALIAS=$(whiptail \
         --title "termio v${TERMIO_VERSION}" \
+        --cancel-button "Back" \
         --menu "$_title" "$TH" "$TW" 10 \
         "$@" \
         3>&1 1>&2 2>&3) || { SELECTED_ALIAS=""; return 1; }
@@ -3265,14 +3266,14 @@ Press OK to continue to the confirmation prompt." "$TH" "$TW"
 _wt_snip_menu() {
     while true; do
         _sc=$(whiptail --title "termio — Snippets" \
-            --menu "Reusable remote commands:" "$TH" "$TW" 7 \
-            "list" "List all snippets" \
-            "add"  "Add a new snippet" \
-            "run"  "Run a snippet on host(s)" \
-            "info" "Show snippet details" \
-            "edit" "Edit a snippet" \
-            "rm"   "Remove a snippet" \
-            "back" "Back to main menu" \
+            --cancel-button "Back" \
+            --menu "Reusable remote commands:" "$TH" "$TW" 6 \
+            "list" "  List all snippets" \
+            "add"  "  Add a new snippet" \
+            "run"  "  Run a snippet on host(s)" \
+            "info" "  Show snippet details" \
+            "edit" "  Edit a snippet" \
+            "rm"   "  Remove a snippet" \
             3>&1 1>&2 2>&3) || break
         case "$_sc" in
             list) wt_snip_list ;;
@@ -3281,7 +3282,7 @@ _wt_snip_menu() {
             info) wt_pick_snippet "Select snippet for info:"  && wt_show_snip_info "$SELECTED_SNIPPET" ;;
             edit) wt_pick_snippet "Select snippet to edit:"   && cmd_snip_edit "$SELECTED_SNIPPET" ;;
             rm)   wt_pick_snippet "Select snippet to remove:" && cmd_snip_rm   "$SELECTED_SNIPPET" ;;
-            back|"") break ;;
+            "") break ;;
         esac
     done
 }
@@ -3454,8 +3455,8 @@ cmd_copy_wizard() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _cw_dir=$(whiptail --title "termio — Copy" \
             --menu "Direction for ${_cw_alias}:" "$TH" "$TW" 2 \
-            "download" "↓  Copy from remote to local" \
-            "upload"   "↑  Copy from local to remote" \
+            "download" "  ↓  Copy from remote to local" \
+            "upload"   "  ↑  Copy from local to remote" \
             3>&1 1>&2 2>&3) || return 0
     else
         printf '\n'
@@ -4105,13 +4106,13 @@ cmd_agent() {
 _wt_tunnel_menu() {
     while true; do
         _tc=$(whiptail --title "termio — Tunnels" \
-            --menu "SSH tunnel management" "$TH" "$TW" 6 \
-            "status" "List / status all tunnels" \
-            "add"    "Add a new tunnel" \
-            "start"  "Start a tunnel" \
-            "stop"   "Stop a running tunnel" \
-            "rm"     "Remove a tunnel" \
-            "back"   "Back to main menu" \
+            --cancel-button "Back" \
+            --menu "SSH tunnel management" "$TH" "$TW" 5 \
+            "status" "  List / status all tunnels" \
+            "add"    "  Add a new tunnel" \
+            "start"  "  Start a tunnel" \
+            "stop"   "  Stop a running tunnel" \
+            "rm"     "  Remove a tunnel" \
             3>&1 1>&2 2>&3) || return 0
         case "$_tc" in
             status)
@@ -4123,9 +4124,9 @@ _wt_tunnel_menu() {
                 _tta="$SELECTED_ALIAS"
                 _ttype=$(whiptail --title "termio — Tunnel Type" \
                     --menu "Forward type:" "$TH" "$TW" 3 \
-                    "local"  "-L  Local port forward (default)" \
-                    "remote" "-R  Remote port forward (expose local to server)" \
-                    "socks"  "-D  SOCKS5 dynamic proxy" \
+                    "local"  "  -L  Local port forward (default)" \
+                    "remote" "  -R  Remote port forward (expose local to server)" \
+                    "socks"  "  -D  SOCKS5 dynamic proxy" \
                     3>&1 1>&2 2>&3) || _ttype="local"
                 case "$_ttype" in
                     socks)
@@ -4156,7 +4157,7 @@ _wt_tunnel_menu() {
                 wt_input "Tunnel name to remove" ""; [ -z "$_PROMPT_RESULT" ] && continue
                 cmd_tunnel rm "$_PROMPT_RESULT"
                 wt_scrollmsg "termio — Tunnels" "$(_wt_tunnel_status_text)" ;;
-            back|"") return 0 ;;
+            "") return 0 ;;
         esac
     done
 }
@@ -4165,12 +4166,12 @@ _wt_tunnel_menu() {
 _wt_agent_menu() {
     while true; do
         _ac=$(whiptail --title "termio — SSH Agent" \
-            --menu "SSH agent key management" "$TH" "$TW" 5 \
-            "list"  "List alias keys loaded in agent" \
-            "add"   "Add alias key(s) to agent" \
-            "rm"    "Remove alias key from agent" \
-            "clear" "Clear all keys from agent" \
-            "back"  "Back to main menu" \
+            --cancel-button "Back" \
+            --menu "SSH agent key management" "$TH" "$TW" 4 \
+            "list"  "  List alias keys loaded in agent" \
+            "add"   "  Add alias key(s) to agent" \
+            "rm"    "  Remove alias key from agent" \
+            "clear" "  Clear all keys from agent" \
             3>&1 1>&2 2>&3) || return 0
         case "$_ac" in
             list)
@@ -4197,7 +4198,7 @@ _wt_agent_menu() {
                         wt_msg "Failed to clear agent — is ssh-agent running?"
                     fi
                 fi ;;
-            back|"") return 0 ;;
+            "") return 0 ;;
         esac
     done
 }
@@ -4211,12 +4212,12 @@ _wt_sync_menu() {
         || printf '%s' "${_sync_path:+OFFLINE: }${_sync_path:-not configured}")"
 
     _sc=$(whiptail --title "termio — Sync" \
-        --menu "Sync: $_sync_status" "$TH" "$TW" 5 \
-        "status"  "Show sync status" \
-        "init"    "Set up or reconfigure sync folder" \
-        "detach"  "Detach from sync (restore local files)" \
-        "keys"    "Encrypted key sync (enable/disable/restore)" \
-        "back"    "Back to main menu" \
+        --cancel-button "Back" \
+        --menu "Sync: $_sync_status" "$TH" "$TW" 4 \
+        "status"  "  Show sync status" \
+        "init"    "  Set up or reconfigure sync folder" \
+        "detach"  "  Detach from sync (restore local files)" \
+        "keys"    "  Encrypted key sync (enable/disable/restore)" \
         3>&1 1>&2 2>&3) || return 0
     case "$_sc" in
         status) wt_sync_status ;;
@@ -4225,11 +4226,11 @@ _wt_sync_menu() {
         keys)
             _kc=$(whiptail --title "termio — Key Sync" \
                 --menu "Encrypted key archive (AES-256)" "$TH" "$TW" 5 \
-                "status"  "Key sync status" \
-                "enable"  "Enable encrypted key sync" \
-                "disable" "Disable & delete archive" \
-                "update"  "Rebuild archive now" \
-                "restore" "Restore keys from archive" \
+                "status"  "  Key sync status" \
+                "enable"  "  Enable encrypted key sync" \
+                "disable" "  Disable & delete archive" \
+                "update"  "  Rebuild archive now" \
+                "restore" "  Restore keys from archive" \
                 3>&1 1>&2 2>&3) || return 0
             case "$_kc" in
                 status)  wt_sync_keys_status ;;
@@ -4244,11 +4245,12 @@ _wt_sync_menu() {
 _wt_prefs_menu() {
     _cur_pref=$(pref_get "ui")
     _pc=$(whiptail --title "termio — UI Preference" \
+        --cancel-button "Back" \
         --menu "Current: ${_cur_pref:-auto-detect}  |  whiptail installed: $([ "$_WHIPTAIL_INSTALLED" -eq 1 ] && printf 'yes' || printf 'no')" \
         12 64 3 \
-        "whiptail" "Use TUI dialogs (graphical menus)" \
-        "cli"      "Use plain terminal always" \
-        "auto"     "Auto-detect (default)" \
+        "whiptail" "  Use TUI dialogs (graphical menus)" \
+        "cli"      "  Use plain terminal always" \
+        "auto"     "  Auto-detect (default)" \
         3>&1 1>&2 2>&3) || return 0
     case "$_pc" in
         whiptail) cmd_prefer whiptail ;;
@@ -4365,16 +4367,16 @@ _wt_manage_menu() {
     while true; do
         _title=$(_wt_title)
         _mchoice=$(whiptail --title "$_title — Manage" \
-            --menu "Manage aliases:" "$TH" "$TW" 10 \
-            "edit"   "Edit an alias" \
-            "rotate" "Rotate SSH key for an alias" \
-            "pin"    "Pin / unpin aliases (show at top of list)" \
-            "audit"  "Audit SSH key ages" \
-            "backup" "View / restore SSH config backups" \
-            "rm"     "Remove an alias" \
-            "export" "Export aliases to file" \
-            "import" "Import aliases from file" \
-            "back"   "← Back to main menu" \
+            --cancel-button "Back" \
+            --menu "Manage aliases:" "$TH" "$TW" 8 \
+            "edit"   "  Edit an alias" \
+            "rotate" "  Rotate SSH key for an alias" \
+            "pin"    "  Pin / unpin aliases (show at top of list)" \
+            "audit"  "  Audit SSH key ages" \
+            "backup" "  View / restore SSH config backups" \
+            "rm"     "  Remove an alias" \
+            "export" "  Export aliases to file" \
+            "import" "  Import aliases from file" \
             3>&1 1>&2 2>&3) || return 0
         case "$_mchoice" in
             edit)
@@ -4387,9 +4389,9 @@ _wt_manage_menu() {
                 _ptitle=$(_wt_title)
                 _pchoice=$(whiptail --title "$_ptitle — Pin" \
                     --menu "Pin management:" "$TH" "$TW" 3 \
-                    "pin"   "Pin an alias (show at top of list)" \
-                    "unpin" "Unpin an alias" \
-                    "list"  "Show current pinned aliases" \
+                    "pin"   "  Pin an alias (show at top of list)" \
+                    "unpin" "  Unpin an alias" \
+                    "list"  "  Show current pinned aliases" \
                     3>&1 1>&2 2>&3) || true
                 case "$_pchoice" in
                     pin)
@@ -4435,7 +4437,7 @@ _wt_manage_menu() {
             import)
                 wt_input "Path to import file" "$HOME/termio-export.txt"
                 [ -n "$_PROMPT_RESULT" ] && cmd_import "$_PROMPT_RESULT" ;;
-            back|"") return 0 ;;
+            "") return 0 ;;
         esac
     done
 }
@@ -4508,7 +4510,6 @@ interactive_menu() {
                     fi ;;
                 test)
                     _tc=$(whiptail --title "termio v${TERMIO_VERSION}" \
-                        --cancel-button "Back" \
                         --menu "Test connections:" "$TH" "$TW" 2 \
                         "one" "  Test a single alias" \
                         "all" "  Test all connections" \
