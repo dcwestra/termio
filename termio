@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # termio — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
-# Version 3.7.3
+# Version 3.7.5
 #
 # USAGE:
 #   termio [-v]                              Interactive TUI/CLI menu
@@ -54,7 +54,7 @@
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.7.3"
+TERMIO_VERSION="3.7.5"
 
 set -e
 
