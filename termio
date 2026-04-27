@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # termio — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
-# Version 3.4.0
+# Version 3.7.3
 #
 # USAGE:
 #   termio [-v]                              Interactive TUI/CLI menu
@@ -54,7 +54,7 @@
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.6.0"
+TERMIO_VERSION="3.7.3"
 
 set -e
 
@@ -107,6 +107,11 @@ vlog()    { [ "$TERMIO_VERBOSE" -eq 1 ] && printf "${C_DIM}  [v] %s${C_RESET}\n"
 # Convert "YYYY-MM-DD HH:MM" string to epoch seconds — GNU date -d or BSD date -j
 _ts_to_epoch() {
     date -d "$1" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M" "$1" +%s 2>/dev/null
+}
+
+# base64 decode — GNU: -d, BSD (macOS): -D
+_base64_decode() {
+    printf '%s' "$1" | base64 -d 2>/dev/null || printf '%s' "$1" | base64 -D 2>/dev/null
 }
 
 # Convert stored YYYY-MM-DD HH:MM timestamp to human-readable relative string
@@ -210,6 +215,12 @@ pref_set() {
 
 detect_distro() {
     DISTRO_ID=""; DISTRO_FAMILY=""; WHIPTAIL_PKG=""; WHIPTAIL_INSTALL_CMD=""
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+        DISTRO_ID="macos"; DISTRO_FAMILY="darwin"
+        WHIPTAIL_PKG="newt"
+        vlog "Distro: macOS → package: newt (brew install newt)"
+        return
+    fi
     if [ -f /etc/os-release ]; then
         # shellcheck disable=SC1091
         . /etc/os-release
@@ -245,9 +256,16 @@ install_whiptail() {
     printf "  Package to install: ${C_BOLD}%s${C_RESET}\n\n" "$WHIPTAIL_PKG"
 
     if [ -z "$WHIPTAIL_INSTALL_CMD" ]; then
-        warn "Unrecognised distro — cannot auto-install."
-        printf "  Install whiptail or newt manually, then run:\n"
-        printf "    ${C_BOLD}termio prefer whiptail${C_RESET}\n\n"
+        if [ "$DISTRO_ID" = "macos" ]; then
+            warn "macOS detected — cannot auto-install via termio."
+            printf "  Install with Homebrew:\n"
+            printf "    ${C_BOLD}brew install newt${C_RESET}\n"
+            printf "  Then run: ${C_BOLD}termio prefer whiptail${C_RESET}\n\n"
+        else
+            warn "Unrecognised distro — cannot auto-install."
+            printf "  Install whiptail or newt manually, then run:\n"
+            printf "    ${C_BOLD}termio prefer whiptail${C_RESET}\n\n"
+        fi
         return 1
     fi
 
@@ -974,7 +992,7 @@ cmd_info() {
     # Determine key age in days
     _kdays=""
     if [ -f "$_key" ]; then
-        _kmt=$(date -r "$_key" +%s 2>/dev/null || true)
+        _kmt=$(stat -c %Y "$_key" 2>/dev/null || stat -f %m "$_key" 2>/dev/null || true)
         if [ -n "$_kmt" ]; then
             _now=$(date +%s)
             _kdays=$(( ( _now - _kmt ) / 86400 ))
@@ -2988,7 +3006,7 @@ cmd_connect() {
     elif [ "$_use_sshpass" -eq 2 ]; then
         command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
         warn "Password auth via sshpass — consider key-based auth: termio rotate $_alias"
-        _sp=$(printf '%s' "$_stored_pw" | base64 -d 2>/dev/null)
+        _sp=$(_base64_decode "$_stored_pw")
         unset _stored_pw
         SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
         _ssh_exit=$?
@@ -4363,6 +4381,7 @@ cmd_help() {
     printf "      Debian/Mint:  sudo apt install sshpass whiptail openssl\n"
     printf "      Fedora:       sudo dnf install sshpass newt openssl\n"
     printf "      Arch:         sudo pacman -S libnewt openssl\n"
+    printf "      macOS:        brew install sshpass newt  (openssl pre-installed)\n"
     printf '\n'
     printf "  ${C_BOLD}INSTALL${C_RESET}\n"
     printf "    chmod +x termio && sudo mv termio /usr/local/bin/termio\n"
