@@ -3967,7 +3967,7 @@ interactive_menu() {
             _title=$(_wt_title)
             CHOICE=$(whiptail --title "$_title" \
                 --cancel-button "Exit" \
-                --menu "Choose an action:" "$TH" "$TW" 16 \
+                --menu "Choose an action:" "$TH" "$TW" 14 \
                 "connect" "  Connect to a saved alias" \
                 "add"     "  Add a new SSH alias" \
                 "info"    "  Show alias details" \
@@ -3982,7 +3982,6 @@ interactive_menu() {
                 "sync"    "  Sync ▶  — mirror to NAS / cloud / USB" \
                 "prefs"   "  Preferences" \
                 "help"    "  Help" \
-                "quit"    "  Exit" \
                 3>&1 1>&2 2>&3) || break
 
             case "$CHOICE" in
@@ -4033,7 +4032,7 @@ interactive_menu() {
                 sync)   _wt_sync_menu ;;
                 prefs)  _wt_prefs_menu ;;
                 help)   wt_help ;;
-                quit|"") break ;;
+                "") break ;;
             esac
         done
     else
