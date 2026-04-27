@@ -1,6 +1,6 @@
 # termio
 
-A terminal-native SSH alias and connection manager for Linux. A lightweight, POSIX sh replacement for GUI tools like Termius — no Electron, no subscription, no cloud account required.
+A terminal-native SSH alias and connection manager for Linux and macOS. A lightweight, POSIX sh replacement for GUI tools like Termius — no Electron, no subscription, no cloud account required.
 
 Works as a full TUI (whiptail menus) or a plain CLI. One shell script, no compiled dependencies.
 
@@ -77,6 +77,7 @@ sudo cp termio-completion /etc/bash_completion.d/termio
 | Fedora / RHEL | `sudo dnf install newt` |
 | Arch / Manjaro | `sudo pacman -S libnewt` |
 | openSUSE | `sudo zypper install newt` |
+| macOS | `brew install newt` |
 
 Or let termio install it: `termio prefer whiptail`
 
@@ -112,7 +113,7 @@ termio import <file>              # Import aliases from an export file
 
 ```sh
 termio run <alias> <cmd>          # Run a remote command without saving a snippet
-termio copy <alias>:/remote /local  # Copy files using alias credentials (scp)
+termio copy <alias>:/remote /local  # Copy files using alias credentials (sftp)
 termio copy /local <alias>:/remote  # Upload files
 ```
 
@@ -212,6 +213,25 @@ termio prefer <alias> sshpass        # Store an obfuscated password for this ali
 termio prefer <alias> sshpass clear  # Remove stored password
 ```
 
+### Pinned aliases
+
+Pin aliases to always appear at the top of `termio ls`, regardless of last-connect order.
+
+```sh
+termio pin <alias>                # Pin an alias to the top of the list
+termio unpin <alias>              # Remove pin
+termio pin                        # Show all pinned aliases
+```
+
+### Backups
+
+termio automatically backs up `~/.ssh/config` before every destructive change.
+
+```sh
+termio backup                     # List available backups (most recent first)
+termio backup restore <N>         # Restore backup number N
+```
+
 ### Other
 
 ```sh
@@ -230,7 +250,7 @@ termio -v <command>               # Verbose — show background operations
 ~/.config/termio/preferences         Key=value settings (including per-alias prefs)
 ~/.config/termio/snippets            INI-style snippet storage
 ~/.config/termio/tunnels             INI-style tunnel definitions
-~/.config/termio/tunnel-pids/        PID files for running tunnels
+~/.config/termio/tunnel-socks/       SSH control sockets for running tunnels
 ```
 
 ### Sync folder layout (when configured)
