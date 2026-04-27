@@ -78,7 +78,7 @@ PREF_FILE="$CONF_DIR/preferences"
 # ── Colours ───────────────────────────────────────────────────────────────────
 
 # Whiptail/newt color theme — dark background, cyan accents, matches CLI palette
-export NEWT_COLORS='root=brightwhite,black:border=cyan,black:window=brightwhite,black:shadow=black,black:title=brightcyan,black:button=black,cyan:actbutton=black,brightcyan:checkbox=brightwhite,black:actcheckbox=black,cyan:entry=brightwhite,black:label=brightcyan,black:listbox=brightwhite,black:actlistbox=black,cyan:textbox=brightwhite,black:acttextbox=black,cyan:helpline=white,black:roottext=brightcyan,black:sellistbox=brightwhite,cyan:actsellistbox=black,brightcyan'
+export NEWT_COLORS='root=white,black:border=cyan,black:window=white,black:shadow=black,black:title=cyan,black:button=black,cyan:actbutton=black,brightcyan:checkbox=white,black:actcheckbox=black,cyan:entry=white,black:label=cyan,black:listbox=white,black:actlistbox=white,black:textbox=white,black:acttextbox=white,black:helpline=black,black:roottext=cyan,black:sellistbox=white,black:actsellistbox=black,cyan'
 
 C_RESET='\033[0m'
 C_BOLD='\033[1m'
@@ -3966,39 +3966,42 @@ interactive_menu() {
         while true; do
             _title=$(_wt_title)
             CHOICE=$(whiptail --title "$_title" \
+                --cancel-button "Exit" \
                 --menu "Choose an action:" "$TH" "$TW" 16 \
-                "connect" "Connect to a saved alias" \
-                "add"     "Add a new SSH alias" \
-                "info"    "Show alias details" \
-                "test"    "Test a connection" \
-                "status"  "Status dashboard — all connections" \
-                "run"     "Run a one-off remote command" \
-                "copy"    "Copy files to/from alias (sftp)" \
-                "manage"  "Manage ▶  (edit / rotate / audit / rm / export)" \
-                "snip"    "Snippets ▶  — reusable remote commands" \
-                "tunnel"  "Tunnels ▶  — named port-forward profiles" \
-                "agent"   "Agent ▶  — SSH key agent management" \
-                "sync"    "Sync ▶  — mirror to NAS / cloud / USB" \
-                "prefs"   "Preferences" \
-                "help"    "Help" \
-                "quit"    "Exit" \
+                "connect" "  Connect to a saved alias" \
+                "add"     "  Add a new SSH alias" \
+                "info"    "  Show alias details" \
+                "test"    "  Test a connection" \
+                "status"  "  Status dashboard — all connections" \
+                "run"     "  Run a one-off remote command" \
+                "copy"    "  Copy files to/from alias (sftp)" \
+                "manage"  "  Manage ▶  (edit / rotate / audit / rm / export)" \
+                "snip"    "  Snippets ▶  — reusable remote commands" \
+                "tunnel"  "  Tunnels ▶  — named port-forward profiles" \
+                "agent"   "  Agent ▶  — SSH key agent management" \
+                "sync"    "  Sync ▶  — mirror to NAS / cloud / USB" \
+                "prefs"   "  Preferences" \
+                "help"    "  Help" \
+                "quit"    "  Exit" \
                 3>&1 1>&2 2>&3) || break
 
             case "$CHOICE" in
                 connect)
-                    wt_pick_alias "Select alias to connect:"
-                    [ -n "$SELECTED_ALIAS" ] && cmd_connect "$SELECTED_ALIAS" ;;
+                    if wt_pick_alias "Select alias to connect:"; then
+                        cmd_connect "$SELECTED_ALIAS"
+                    fi ;;
                 add)    cmd_add ;;
                 info)
-                    wt_pick_alias "Select alias to inspect:"
-                    [ -n "$SELECTED_ALIAS" ] && wt_show_info "$SELECTED_ALIAS" ;;
+                    if wt_pick_alias "Select alias to inspect:"; then
+                        wt_show_info "$SELECTED_ALIAS"
+                    fi ;;
                 test)
-                    wt_pick_alias "Select alias to test:"
-                    [ -n "$SELECTED_ALIAS" ] && wt_test_alias "$SELECTED_ALIAS" ;;
+                    if wt_pick_alias "Select alias to test:"; then
+                        wt_test_alias "$SELECTED_ALIAS"
+                    fi ;;
                 status) wt_status ;;
                 run)
-                    wt_pick_alias "Select alias to run command on:"
-                    if [ -n "$SELECTED_ALIAS" ]; then
+                    if wt_pick_alias "Select alias to run command on:" && [ -n "$SELECTED_ALIAS" ]; then
                         wt_input "Command to run on ${SELECTED_ALIAS}" ""
                         if [ -n "$_PROMPT_RESULT" ]; then
                             _wt_run_alias="$SELECTED_ALIAS"
