@@ -16,7 +16,7 @@
 #   termio [-v] export [file]                Export aliases to a portable file
 #   termio [-v] import <file>                Import aliases from export file
 #   termio [-v] run    <alias> <cmd>         Run a one-off remote command
-#   termio [-v] copy   <src>   <dst>         Copy files via scp (alias:/path)
+#   termio [-v] copy   <src>   <dst>         Copy files via sftp (alias:/path)
 #   termio [-v] status                       Test all connections (dashboard)
 #   termio [-v] audit                        Audit SSH key ages
 #   termio       prefer [whiptail|cli]       Show or set preferences
@@ -2424,6 +2424,7 @@ _EOPRD
                 2>/dev/null; printf '\n'
 
             _exec_cmd="$_rcmd"
+            _sudo_pass=""
             if [ "$_rsudo" = "yes" ]; then
                 if [ "$_sudo_same" = "yes" ]; then
                     _sudo_pass="$_sudo_pass_shared"
@@ -2432,21 +2433,31 @@ _EOPRD
                     _sudo_pass="$_PROMPT_RESULT"
                 fi
                 _inner=$(printf '%s' "$_rcmd" | sed 's/^[[:space:]]*sudo[[:space:]]*//')
-                _exec_cmd="echo $(printf '%s' "$_sudo_pass" | sed "s/'/'\\\\''/g") | sudo -S sh -c '$(printf '%s' "$_inner" | sed "s/'/'\\\\''/g")'"
-                unset _sudo_pass
+                # Password piped via stdin — never embedded in the command string
+                _exec_cmd="sudo -S sh -c '$(printf '%s' "$_inner" | sed "s/'/'\\\\''/g")'"
             fi
 
-            if ssh -F "$CONFIG_FILE" \
-                   -o BatchMode=yes \
-                   -o ConnectTimeout=10 \
-                   -o StrictHostKeyChecking=accept-new \
-                   "$_target" "$_exec_cmd" 2>&1 | sed 's/^/    /'; then
+            set +e
+            if [ "$_rsudo" = "yes" ]; then
+                printf '%s\n' "$_sudo_pass" | \
+                    ssh -F "$CONFIG_FILE" \
+                        -o BatchMode=yes -o ConnectTimeout=10 \
+                        -o StrictHostKeyChecking=accept-new \
+                        "$_target" "$_exec_cmd" 2>&1 | sed 's/^/    /'
+            else
+                ssh -F "$CONFIG_FILE" \
+                    -o BatchMode=yes -o ConnectTimeout=10 \
+                    -o StrictHostKeyChecking=accept-new \
+                    "$_target" "$_exec_cmd" 2>&1 | sed 's/^/    /'
+            fi
+            _sexit=$?
+            set -e
+            unset _sudo_pass _exec_cmd
+            if [ "$_sexit" -eq 0 ]; then
                 printf '\n'; success "Completed on $_target"
             else
-                _ec=$?
-                printf '\n'; warn "Failed on $_target (exit code $_ec)"
+                printf '\n'; warn "Failed on $_target (exit code $_sexit)"
             fi
-            unset _exec_cmd
             printf '\n'
         done <<_EOTGT
 $(printf '%s\n' "$_targets")
@@ -3029,7 +3040,7 @@ cmd_copy() {
     _src="${1:-}"; _dst="${2:-}"
     { [ -z "$_src" ] || [ -z "$_dst" ]; } && \
         die "Usage: termio copy <alias>:/remote/path /local/path\n       termio copy /local/path <alias>:/remote/path"
-    command -v scp >/dev/null 2>&1 || die "scp not found — install openssh-client"
+    command -v sftp >/dev/null 2>&1 || die "sftp not found — install openssh-client"
     _alias=""
     case "$_src" in *:*) _alias="${_src%%:*}" ;; esac
     case "$_dst" in
@@ -3041,14 +3052,29 @@ cmd_copy() {
     _user=$(get_field "$_alias" "User")
     printf '\n'
     info "Copying:  ${C_BOLD}$_src${C_RESET}  →  ${C_BOLD}$_dst${C_RESET}"
-    printf "  (via %s@%s using ~/.ssh/config)\n\n" "$_user" "$_host"
+    printf "  (via sftp %s@%s using ~/.ssh/config)\n\n" "$_user" "$_host"
     set +e
-    scp -F "$CONFIG_FILE" -r "$_src" "$_dst"
-    _rc=$?
+    case "$_src" in
+        *:*)
+            # Download: remote → local
+            sftp -F "$CONFIG_FILE" -r "$_src" "$_dst"
+            _rc=$?
+            ;;
+        *)
+            # Upload: local → remote (sftp batch mode)
+            _remote_path="${_dst#*:}"
+            _batch=$(mktemp 2>/dev/null || mktemp -t termio)
+            printf 'put -r "%s" "%s"\n' "$_src" "$_remote_path" > "$_batch"
+            sftp -F "$CONFIG_FILE" -b "$_batch" "$_alias"
+            _rc=$?
+            rm -f "$_batch"
+            ;;
+    esac
     set -e
     printf '\n'
-    [ "$_rc" -eq 0 ] && success "Copy complete." || warn "scp exited with code $_rc"
+    [ "$_rc" -eq 0 ] && success "Copy complete." || warn "sftp exited with code $_rc"
     printf '\n'
+    unset _remote_path _batch
 }
 
 # Interactive copy wizard: pick alias → direction → paths
@@ -3725,7 +3751,7 @@ MENU ITEMS
   run       One-off remote command without saving a snippet.
             Example: termio run myserver "df -h"
 
-  copy      Copy files to/from a remote alias using scp.
+  copy      Copy files to/from a remote alias using sftp.
             Example: termio copy myserver:/etc/hosts /tmp/
 
   edit      Change any saved field for an alias.
@@ -3929,7 +3955,7 @@ interactive_menu() {
                 "test"    "Test a connection" \
                 "status"  "Status dashboard — all connections" \
                 "run"     "Run a one-off remote command" \
-                "copy"    "Copy files to/from alias (scp)" \
+                "copy"    "Copy files to/from alias (sftp)" \
                 "manage"  "Manage ▶  (edit / rotate / audit / rm / export)" \
                 "snip"    "Snippets ▶  — reusable remote commands" \
                 "tunnel"  "Tunnels ▶  — named port-forward profiles" \
@@ -4000,7 +4026,7 @@ interactive_menu() {
             printf "  ${C_BOLD} 4)${C_RESET} Show alias details\n"
             printf "  ${C_BOLD} 5)${C_RESET} Test a connection\n"
             printf "  ${C_BOLD} 6)${C_RESET} Run a one-off remote command\n"
-            printf "  ${C_BOLD} 7)${C_RESET} Copy files to/from alias (scp)\n"
+            printf "  ${C_BOLD} 7)${C_RESET} Copy files to/from alias (sftp)\n"
             printf "  ${C_BOLD} 8)${C_RESET} Status dashboard (test all connections)\n"
             printf "  ${C_LBLUE}${C_BOLD}── Manage ───────────────────────────────────────${C_RESET}\n"
             printf "  ${C_BOLD} 9)${C_RESET} Edit an alias\n"
@@ -4267,7 +4293,7 @@ cmd_help() {
     printf "    %-36s %s\n" "termio [-v] export [file]"      "Export aliases to portable file"
     printf "    %-36s %s\n" "termio [-v] import <file>"      "Import aliases from export file"
     printf "    %-36s %s\n" "termio [-v] run <alias> <cmd>"  "Run a one-off remote command"
-    printf "    %-36s %s\n" "termio [-v] copy <src> <dst>"   "Copy files via scp (alias:/path)"
+    printf "    %-36s %s\n" "termio [-v] copy <src> <dst>"   "Copy files via sftp (alias:/path)"
     printf "    %-36s %s\n" "termio [-v] status"             "Test all connections (dashboard)"
     printf "    %-36s %s\n" "termio [-v] audit"              "Audit SSH key ages"
     printf "    %-36s %s\n" "termio       prefer"            "Show current preferences"
@@ -4321,7 +4347,7 @@ cmd_help() {
     printf "    • Snippets auto-exported to sync on: snip add, snip edit, snip rm\n"
     printf "    • TUI (whiptail) or plain CLI — user preference, auto-installs whiptail\n"
     printf "    • run — one-off remote commands without saving a snippet\n"
-    printf "    • copy — scp wrapper using alias names (no host/port/key lookup needed)\n"
+    printf "    • copy — sftp wrapper using alias names (no host/port/key lookup needed)\n"
     printf "    • status — parallel reachability dashboard for all aliases\n"
     printf "    • audit — flag SSH keys older than N days (configurable threshold)\n"
     printf "    • tunnel — named port-forward profiles, start/stop/status management\n"
