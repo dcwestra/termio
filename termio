@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # termio — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
-# Version 3.7.5
+# Version 3.8.0
 #
 # USAGE:
 #   termio [-v]                              Interactive TUI/CLI menu
@@ -48,13 +48,21 @@
 #   termio [-v] backup restore <N>           Restore a numbered backup
 #   termio       pin   <alias>               Pin alias to top of list
 #   termio       unpin <alias>               Unpin alias
+#   termio [-v] clone  <alias> [<new>]       Clone an alias as a new starting point
+#   termio [-v] rename <old>   <new>         Rename an alias (updates keys + prefs)
+#   termio       tag   <alias> <group>       Add a group tag to an alias
+#   termio       untag <alias> <group>       Remove a group tag from an alias
+#   termio [-v] open  <alias>               Open an SFTP session to an alias
+#   termio [-v] wake  <alias>               Send Wake-on-LAN magic packet
+#   termio [-v] log   [alias]               Show connection history
+#   termio [-v] diff                         Diff local aliases vs sync export
 #   termio       version                     Show version
 #   termio       help                        Show this help
 #
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.7.5"
+TERMIO_VERSION="3.8.0"
 
 set -e
 
@@ -469,6 +477,7 @@ alias_exists() {
 # ── Config backup ─────────────────────────────────────────────────────────────
 
 BACKUP_DIR="$CONF_DIR/backups"
+HISTORY_LOG="$CONF_DIR/history.log"
 BACKUP_MAX=5
 
 backup_config() {
@@ -1124,6 +1133,80 @@ cmd_edit() {
     printf "  ${C_BOLD}%-12s${C_RESET} %s\n\n" "Port:"   "$_np"
 }
 
+# ── CLONE ─────────────────────────────────────────────────────────────────────
+
+cmd_clone() {
+    _src="${1:-}"
+    [ -z "$_src" ] && die "Usage: termio clone <alias> [<new-alias>]"
+    alias_exists "$_src" || die "Alias \"$_src\" not found."
+
+    _ch=$(get_field   "$_src" "HostName")
+    _cu=$(get_field   "$_src" "User")
+    _cp=$(get_field   "$_src" "Port");  [ -z "$_cp" ] && _cp="22"
+    _cj=$(get_field   "$_src" "ProxyJump")
+    _cn=$(get_comment "$_src" "Note")
+    _cgrp=$(get_comment "$_src" "Group")
+    _ca=$(get_field   "$_src" "ServerAliveInterval")
+    _cf=$(get_field   "$_src" "ForwardAgent")
+    _cl=$(get_field   "$_src" "LocalForward")
+    _def_ktype=$(pref_get "key_type"); [ -z "$_def_ktype" ] && _def_ktype="ed25519"
+
+    info "Cloning ${C_BOLD}$_src${C_RESET} — enter new alias details (blank = keep source value)"
+    printf '\n'
+
+    if [ -n "${2:-}" ]; then
+        ALIAS=$(sanitize_alias "$2")
+    else
+        wt_input "New alias name" ""
+        while [ -z "$_PROMPT_RESULT" ]; do
+            wt_msg "Alias cannot be empty."; wt_input "New alias name" ""
+        done
+        ALIAS=$(sanitize_alias "$_PROMPT_RESULT")
+    fi
+    [ -z "$ALIAS" ] && die "Alias contains no valid characters."
+    if alias_exists "$ALIAS"; then
+        wt_yesno "Alias \"$ALIAS\" already exists. Overwrite?" || { printf '  Aborting.\n'; return 0; }
+        remove_config_block "$ALIAS"
+    fi
+
+    wt_input "Note"                    "$_cn";   _nn="${_PROMPT_RESULT:-$_cn}"
+    wt_input "Group(s) / tags"         "$_cgrp"; _ngrp="${_PROMPT_RESULT:-$_cgrp}"
+    wt_input "Remote hostname or IP"   "$_ch";   _nh="${_PROMPT_RESULT:-$_ch}"
+    wt_input "SSH port"                "$_cp";   _np="${_PROMPT_RESULT:-$_cp}"
+    case "$_np" in ''|*[!0-9]*) _np="$_cp" ;; esac
+    wt_input "Remote username"         "$_cu";   _nu="${_PROMPT_RESULT:-$_cu}"
+    wt_input "SSH key type (ed25519 / rsa / ecdsa)" "$_def_ktype"
+    case "$_PROMPT_RESULT" in
+        ed25519|rsa|ecdsa) _ktype="$_PROMPT_RESULT" ;;
+        *) _ktype="$_def_ktype" ;;
+    esac
+
+    mkdir -p "$SSH_DIR"; chmod 700 "$SSH_DIR"
+    KEY_FILE="$SSH_DIR/id_${_ktype}_${ALIAS}"
+    info "Generating ${_ktype} key: $KEY_FILE"
+    _keygen "$KEY_FILE" "$_ktype" "${_nu}@${_nh}-${ALIAS}"
+    chmod 600 "$KEY_FILE"; chmod 644 "${KEY_FILE}.pub"
+    success "Key generated."
+
+    wt_password "Remote password (to copy key — blank to skip)"
+    REMOTE_PASS="$_PROMPT_RESULT"
+    if [ -n "$REMOTE_PASS" ]; then
+        info "Copying public key to ${_nu}@${_nh}:${_np} ..."
+        copy_key_to_remote "$KEY_FILE" "$_nu" "$_nh" "$_np" "$REMOTE_PASS" "$_cj"
+        success "Public key copied."
+    else
+        info "Skipping key copy — run: ssh-copy-id -i ${KEY_FILE}.pub ${_nu}@${_nh}"
+    fi
+    unset REMOTE_PASS
+
+    write_config_block "$ALIAS" "$_nh" "$_nu" "$_np" \
+        "$KEY_FILE" "$_cj" "$_nn" "$_ca" "$_cf" "$_cl" "$_ngrp"
+    success "Alias \"$ALIAS\" created from clone of \"$_src\"."
+
+    sync_auto_export
+    sync_keys_update
+}
+
 # ── REMOVE ────────────────────────────────────────────────────────────────────
 
 cmd_remove() {
@@ -1156,6 +1239,70 @@ cmd_remove() {
     sync_auto_export
     sync_keys_update
     printf '\n'
+}
+
+# ── RENAME ────────────────────────────────────────────────────────────────────
+
+cmd_rename() {
+    _old="${1:-}"; _new="${2:-}"
+    [ -z "$_old" ] || [ -z "$_new" ] && die "Usage: termio rename <old-alias> <new-alias>"
+    alias_exists "$_old" || die "Alias \"$_old\" not found."
+    _new=$(sanitize_alias "$_new")
+    [ -z "$_new" ] && die "New alias name contains no valid characters."
+    [ "$_old" = "$_new" ] && { info "Names are identical — nothing to do."; return 0; }
+    alias_exists "$_new" && die "Alias \"$_new\" already exists. Remove it first."
+
+    _ch=$(get_field   "$_old" "HostName")
+    _cu=$(get_field   "$_old" "User")
+    _cp=$(get_field   "$_old" "Port");  [ -z "$_cp" ] && _cp="22"
+    _ck=$(get_field   "$_old" "IdentityFile")
+    _cj=$(get_field   "$_old" "ProxyJump")
+    _cn=$(get_comment "$_old" "Note")
+    _cgrp=$(get_comment "$_old" "Group")
+    _ca=$(get_field   "$_old" "ServerAliveInterval")
+    _cf=$(get_field   "$_old" "ForwardAgent")
+    _cl=$(get_field   "$_old" "LocalForward")
+
+    # Rename key files if they follow the per-alias naming convention
+    _new_key="$_ck"
+    if [ -n "$_ck" ] && [ -f "$_ck" ]; then
+        _key_dir=$(dirname "$_ck")
+        _key_base=$(basename "$_ck")
+        _new_base=$(printf '%s' "$_key_base" | sed "s/_${_old}$/_${_new}/")
+        if [ "$_key_base" != "$_new_base" ]; then
+            _new_key="$_key_dir/$_new_base"
+            mv "$_ck" "$_new_key" 2>/dev/null || true
+            [ -f "${_ck}.pub" ] && mv "${_ck}.pub" "${_new_key}.pub" 2>/dev/null || true
+            vlog "Key renamed: $_ck → $_new_key"
+        fi
+    fi
+
+    remove_config_block "$_old"
+    write_config_block "$_new" "$_ch" "$_cu" "$_cp" "$_new_key" "$_cj" "$_cn" "$_ca" "$_cf" "$_cl" "$_cgrp"
+
+    # Migrate per-alias preferences
+    for _pkey in last_connect auto_agent sshpass wol_mac copy_last_remote; do
+        _pval=$(pref_get "${_pkey}_${_old}")
+        if [ -n "$_pval" ]; then
+            pref_set "${_pkey}_${_new}" "$_pval"
+            # Clear old key by setting empty (pref_set with empty value removes it)
+            sed -i.bak "/^${_pkey}_${_old}=/d" "$PREF_FILE" 2>/dev/null \
+                || sed -i "" "/^${_pkey}_${_old}=/d" "$PREF_FILE" 2>/dev/null || true
+            rm -f "${PREF_FILE}.bak" 2>/dev/null || true
+        fi
+    done
+
+    # Update pinned_aliases list
+    _pinned=$(pref_get "pinned_aliases")
+    if printf '%s' "${_pinned}," | tr ',' '\n' | grep -qx "$_old"; then
+        _new_pinned=$(printf '%s' "$_pinned" | tr ',' '\n' | \
+            sed "s/^${_old}$/${_new}/" | tr '\n' ',' | sed 's/,$//' || true)
+        pref_set "pinned_aliases" "$_new_pinned"
+    fi
+
+    success "Alias \"$_old\" renamed to \"$_new\"."
+    sync_auto_export
+    sync_keys_update
 }
 
 # ── TEST ──────────────────────────────────────────────────────────────────────
@@ -1407,16 +1554,41 @@ _cmd_prefer_alias() {
                     printf "  termio connect $_pa --sshpass  — one-time prompt (override)\n\n" ;;
                 *) die "Usage: termio prefer $_pa sshpass  OR  termio prefer $_pa sshpass clear" ;;
             esac ;;
+        wol)
+            _wm="${3:-}"
+            if [ -z "$_wm" ]; then
+                _cur_mac=$(pref_get "wol_mac_${_pa}")
+                printf '\n  WOL MAC for %s: %s\n\n' "$_pa" "${_cur_mac:-not set}"
+                printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}   — set MAC address\n" "$_pa"
+                printf "  ${C_BOLD}termio prefer %s wol clear${C_RESET}   — remove MAC address\n\n" "$_pa"
+                return 0
+            fi
+            if [ "$_wm" = "clear" ]; then
+                pref_set "wol_mac_${_pa}" ""
+                success "WOL MAC address cleared for \"$_pa\"."
+            else
+                # Normalise MAC to lowercase colon-separated
+                _wm_norm=$(printf '%s' "$_wm" | tr '[:upper:]' '[:lower:]' | \
+                    sed 's/-/:/g' | sed 's/[^0-9a-f:]//g')
+                _wm_octets=$(printf '%s' "$_wm_norm" | tr ':' '\n' | wc -l)
+                [ "$_wm_octets" -ne 6 ] 2>/dev/null && die "Invalid MAC address: $_wm"
+                pref_set "wol_mac_${_pa}" "$_wm_norm"
+                success "WOL MAC set for \"$_pa\": $wm_norm"
+                printf "  Send WOL packet with: ${C_BOLD}termio wake $_pa${C_RESET}\n\n"
+            fi ;;
         "")
             _aa=$(pref_get "auto_agent_$_pa")
             _sp=$(pref_get "sshpass_$_pa")
+            _wm=$(pref_get "wol_mac_$_pa")
             printf '\n  Per-alias preferences for: %s\n\n' "$_pa"
             printf "    auto_agent:  %s\n" "${_aa:-off}"
-            printf "    sshpass:     %s\n\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
+            printf "    sshpass:     %s\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
+            printf "    wol_mac:     %s\n\n" "${_wm:-not set}"
             printf "  ${C_BOLD}termio prefer %s auto_agent on|off${C_RESET}\n" "$_pa"
             printf "  ${C_BOLD}termio prefer %s sshpass${C_RESET}       — store password\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET} — remove stored password\n\n" "$_pa" ;;
-        *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass)" ;;
+            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET} — remove stored password\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}     — set Wake-on-LAN MAC\n\n" "$_pa" ;;
+        *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass, wol)" ;;
     esac
 }
 
@@ -2991,6 +3163,7 @@ cmd_connect() {
         fi
     fi
 
+    _conn_start=$(date +%s 2>/dev/null || printf '0')
     sleep 0.4
     clear 2>/dev/null || printf '\033[2J\033[H'
 
@@ -3018,6 +3191,12 @@ cmd_connect() {
     set -e
 
     clear 2>/dev/null || printf '\033[2J\033[H'
+
+    _conn_end=$(date +%s 2>/dev/null || printf '0')
+    _conn_dur=$(( _conn_end - _conn_start ))
+    printf '%s|%s|%s|%s\n' \
+        "$(date '+%Y-%m-%d %H:%M')" "$_alias" "$_conn_dur" "$_ssh_exit" \
+        >> "$HISTORY_LOG" 2>/dev/null || true
 
     if [ "$_ssh_exit" -ne 0 ] && [ "$_ssh_exit" -ne 130 ]; then
         warn "SSH exited with code $_ssh_exit"
@@ -3156,6 +3335,70 @@ cmd_copy_wizard() {
     esac
 }
 
+# ── OPEN (SFTP) ───────────────────────────────────────────────────────────────
+
+cmd_open() {
+    _alias="${1:-}"
+    [ -z "$_alias" ] && die "Usage: termio open <alias>"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+    _host=$(get_field "$_alias" "HostName")
+    _user=$(get_field "$_alias" "User")
+    info "Opening SFTP session to ${C_BOLD}$_alias${C_RESET} (${_user}@${_host})"
+    printf "  Type ${C_BOLD}bye${C_RESET} to close the session.\n\n"
+    sleep 0.2
+    sftp -F "$CONFIG_FILE" "$_alias"
+}
+
+# ── TAG / UNTAG ───────────────────────────────────────────────────────────────
+
+cmd_tag() {
+    _alias="${1:-}"; _grp="${2:-}"
+    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: termio tag <alias> <group>"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+    _cur_grp=$(get_comment "$_alias" "Group")
+    if [ -n "$_cur_grp" ]; then
+        printf '%s' "$_cur_grp" | tr ',' '\n' | grep -qx "$_grp" && {
+            info "\"$_alias\" is already in group \"$_grp\"."
+            return 0
+        }
+        _new_grp="${_cur_grp},${_grp}"
+    else
+        _new_grp="$_grp"
+    fi
+    _ch=$(get_field "$_alias" "HostName");         _cu=$(get_field "$_alias" "User")
+    _cp=$(get_field "$_alias" "Port");              [ -z "$_cp" ] && _cp="22"
+    _ck=$(get_field "$_alias" "IdentityFile");     _cj=$(get_field "$_alias" "ProxyJump")
+    _cn=$(get_comment "$_alias" "Note");           _ca=$(get_field "$_alias" "ServerAliveInterval")
+    _cf=$(get_field "$_alias" "ForwardAgent");     _cl=$(get_field "$_alias" "LocalForward")
+    remove_config_block "$_alias"
+    write_config_block "$_alias" "$_ch" "$_cu" "$_cp" "$_ck" "$_cj" "$_cn" "$_ca" "$_cf" "$_cl" "$_new_grp"
+    sync_auto_export
+    success "\"$_alias\" tagged with group \"$_grp\"."
+}
+
+cmd_untag() {
+    _alias="${1:-}"; _grp="${2:-}"
+    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: termio untag <alias> <group>"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+    _cur_grp=$(get_comment "$_alias" "Group")
+    if [ -z "$_cur_grp" ]; then
+        info "\"$_alias\" has no groups."; return 0
+    fi
+    printf '%s' "$_cur_grp" | tr ',' '\n' | grep -qx "$_grp" || {
+        info "\"$_alias\" is not in group \"$_grp\"."; return 0
+    }
+    _new_grp=$(printf '%s' "$_cur_grp" | tr ',' '\n' | grep -vx "$_grp" | tr '\n' ',' | sed 's/,$//' || true)
+    _ch=$(get_field "$_alias" "HostName");         _cu=$(get_field "$_alias" "User")
+    _cp=$(get_field "$_alias" "Port");              [ -z "$_cp" ] && _cp="22"
+    _ck=$(get_field "$_alias" "IdentityFile");     _cj=$(get_field "$_alias" "ProxyJump")
+    _cn=$(get_comment "$_alias" "Note");           _ca=$(get_field "$_alias" "ServerAliveInterval")
+    _cf=$(get_field "$_alias" "ForwardAgent");     _cl=$(get_field "$_alias" "LocalForward")
+    remove_config_block "$_alias"
+    write_config_block "$_alias" "$_ch" "$_cu" "$_cp" "$_ck" "$_cj" "$_cn" "$_ca" "$_cf" "$_cl" "$_new_grp"
+    sync_auto_export
+    success "\"$_alias\" removed from group \"$_grp\"."
+}
+
 # ── STATUS DASHBOARD ──────────────────────────────────────────────────────────
 
 cmd_status() {
@@ -3287,6 +3530,112 @@ _EOAUDIT
         printf "  Set threshold: ${C_BOLD}termio prefer audit_threshold <days>${C_RESET}\n"
     fi
     printf '\n'
+}
+
+# ── LOG ───────────────────────────────────────────────────────────────────────
+
+cmd_log() {
+    _filter="${1:-}"
+    if [ ! -f "$HISTORY_LOG" ] || [ ! -s "$HISTORY_LOG" ]; then
+        printf '\n  No connection history yet.\n\n'; return 0
+    fi
+
+    _CW_DATE=19; _CW_ALIAS=16; _CW_DUR=10; _CW_EXIT=6
+    _log_data=$([ -n "$_filter" ] \
+        && grep "^[^|]*|${_filter}|" "$HISTORY_LOG" 2>/dev/null \
+        || cat "$HISTORY_LOG")
+
+    if [ -z "$_log_data" ]; then
+        printf '\n  No history for alias "%s".\n\n' "$_filter"; return 0
+    fi
+
+    printf '\n'
+    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+    printf "${C_LBLUE}║${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}║${C_RESET}\n" \
+        "$_CW_DATE" "DATE" "$_CW_ALIAS" "ALIAS" "$_CW_DUR" "DURATION" "$_CW_EXIT" "EXIT"
+    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+
+    printf '%s\n' "$_log_data" | tail -50 | while IFS='|' read -r _lts _la _ld _lx; do
+        [ -z "$_la" ] && continue
+        if [ "$_ld" -ge 3600 ] 2>/dev/null; then
+            _ldstr=$(printf '%dh %dm' "$(( _ld / 3600 ))" "$(( (_ld % 3600) / 60 ))")
+        elif [ "$_ld" -ge 60 ] 2>/dev/null; then
+            _ldstr=$(printf '%dm %ds' "$(( _ld / 60 ))" "$(( _ld % 60 ))")
+        else
+            _ldstr=$(printf '%ds' "$_ld")
+        fi
+        [ "$_lx" = "0" ] && _xc="${C_GREEN}" || _xc="${C_YELLOW}"
+        printf "${C_LBLUE}║${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} ${_xc}%-*s${C_RESET} ${C_LBLUE}║${C_RESET}\n" \
+            "$_CW_DATE" "$_lts" "$_CW_ALIAS" "$_la" "$_CW_DUR" "$_ldstr" "$_CW_EXIT" "$_lx"
+    done
+    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+    printf '\n'
+}
+
+# ── WAKE-ON-LAN ───────────────────────────────────────────────────────────────
+
+cmd_wake() {
+    _alias="${1:-}"
+    [ -z "$_alias" ] && die "Usage: termio wake <alias>"
+    alias_exists "$_alias" || die "Alias \"$_alias\" not found."
+
+    _mac=$(pref_get "wol_mac_${_alias}")
+    if [ -z "$_mac" ]; then
+        die "No MAC address stored for \"$_alias\".\nSet one with: termio prefer $_alias wol <MAC>"
+    fi
+
+    _host=$(get_field "$_alias" "HostName")
+    info "Sending Wake-on-LAN magic packet to ${C_BOLD}$_alias${C_RESET} (MAC: ${_mac}, host: ${_host})"
+
+    if command -v wakeonlan >/dev/null 2>&1; then
+        wakeonlan "$_mac" >/dev/null 2>&1
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 - "$_mac" <<'PYEOF'
+import socket, sys, re
+mac = re.sub(r'[^0-9a-fA-F]', '', sys.argv[1])
+if len(mac) != 12:
+    raise SystemExit("Invalid MAC address")
+payload = bytes.fromhex('ff' * 6 + mac * 16)
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.sendto(payload, ('255.255.255.255', 9))
+PYEOF
+    else
+        die "wakeonlan or python3 required to send WOL packets.\n  Install: sudo apt install wakeonlan"
+    fi
+
+    success "Magic packet sent. Host may take 10-30 seconds to boot."
+}
+
+# ── DIFF ──────────────────────────────────────────────────────────────────────
+
+cmd_diff() {
+    _sync_path=$(pref_get "sync_path")
+    [ -z "$_sync_path" ] && die "Sync is not configured. Run: termio sync init"
+    [ -d "$_sync_path" ]  || die "Sync folder not reachable: $_sync_path"
+    _remote_export="$_sync_path/aliases-export.txt"
+    [ -f "$_remote_export" ] || die "No sync export found at: $_remote_export"
+
+    _local_tmp=$(mktemp 2>/dev/null || mktemp -t termio)
+    cmd_export "$_local_tmp" >/dev/null 2>&1
+
+    printf '\n'
+    info "Diff: local aliases vs sync export"
+    printf "  ${C_DIM}− removed from local  /  + added locally${C_RESET}\n\n"
+
+    if diff "$_remote_export" "$_local_tmp" >/dev/null 2>&1; then
+        success "Local aliases match the sync export — no differences."
+    else
+        diff "$_remote_export" "$_local_tmp" | grep '^[+\-]' | grep -v '^---\|^+++' \
+            | while IFS= read -r _dl; do
+                case "$_dl" in
+                    +*) printf "  ${C_GREEN}%s${C_RESET}\n" "$_dl" ;;
+                    -*) printf "  ${C_YELLOW}%s${C_RESET}\n" "$_dl" ;;
+                esac
+            done
+        printf '\n'
+    fi
+    rm -f "$_local_tmp"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4418,6 +4767,14 @@ case "${1:-}" in
     backup)            cmd_backup "${2:-}" "${3:-}" ;;
     pin)               cmd_pin    "${2:-}" ;;
     unpin)             cmd_unpin  "${2:-}" ;;
+    open)              cmd_open   "${2:-}" ;;
+    clone)             cmd_clone  "${2:-}" "${3:-}" ;;
+    rename)            cmd_rename "${2:-}" "${3:-}" ;;
+    tag)               cmd_tag    "${2:-}" "${3:-}" ;;
+    untag)             cmd_untag  "${2:-}" "${3:-}" ;;
+    log)               cmd_log    "${2:-}" ;;
+    diff)              cmd_diff ;;
+    wake)              cmd_wake   "${2:-}" ;;
     version|--version) printf 'termio version %s\n' "$TERMIO_VERSION" ;;
     help|--help|-h)    cmd_help ;;
     *)                 die "Unknown command: '$1'  (try: termio help)" ;;

@@ -38,6 +38,7 @@ Works as a full TUI (whiptail menus) or a plain CLI. One shell script, no compil
 | `whiptail` / `newt` | No | TUI menus (auto-detected; falls back to CLI) |
 | `sshpass` | No | Non-interactive key copy on `add`; optional password auth |
 | `openssl` | No | Encrypted key sync |
+| `wakeonlan` or `python3` | No | Wake-on-LAN (`termio wake`) |
 
 ---
 
@@ -213,6 +214,26 @@ termio prefer <alias> sshpass        # Store an obfuscated password for this ali
 termio prefer <alias> sshpass clear  # Remove stored password
 ```
 
+### Clone and rename
+
+```sh
+termio clone <alias> [<new-alias>]   # Copy an alias as a starting point — prompts to override fields, generates a new key
+termio rename <old> <new>            # Rename an alias cleanly — updates key files and all stored preferences
+```
+
+### Tags
+
+```sh
+termio tag <alias> <group>        # Add a group tag without going through full edit
+termio untag <alias> <group>      # Remove a specific group tag
+```
+
+### Open (SFTP)
+
+```sh
+termio open <alias>               # Open an interactive SFTP session to an alias
+```
+
 ### Pinned aliases
 
 Pin aliases to always appear at the top of `termio ls`, regardless of last-connect order.
@@ -231,6 +252,33 @@ termio automatically backs up `~/.ssh/config` before every destructive change.
 termio backup                     # List available backups (most recent first)
 termio backup restore <N>         # Restore backup number N
 ```
+
+### Connection log
+
+Every `termio connect` session is logged with timestamp, alias, duration, and exit code.
+
+```sh
+termio log                        # Show full connection history (last 50 entries)
+termio log <alias>                # Filter history to a specific alias
+```
+
+### Diff
+
+Compare your local aliases against the sync folder's export — useful when termio is on multiple machines.
+
+```sh
+termio diff                       # Show what's changed locally vs the last sync export
+```
+
+### Wake-on-LAN
+
+```sh
+termio prefer <alias> wol <MAC>   # Store a MAC address for an alias (e.g. aa:bb:cc:dd:ee:ff)
+termio prefer <alias> wol clear   # Remove stored MAC
+termio wake <alias>               # Send a WOL magic packet to wake the host before connecting
+```
+
+Requires `wakeonlan` or `python3`. Sends a broadcast magic packet to `255.255.255.255:9`.
 
 ### Other
 
