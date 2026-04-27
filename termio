@@ -44,6 +44,10 @@
 #   termio [-v] agent add [alias]            Load alias key(s) into agent
 #   termio [-v] agent rm  <alias>            Remove alias key from agent
 #   termio [-v] agent clear                  Remove all keys from agent
+#   termio [-v] backup                       List SSH config backups
+#   termio [-v] backup restore <N>           Restore a numbered backup
+#   termio       pin   <alias>               Pin alias to top of list
+#   termio       unpin <alias>               Unpin alias
 #   termio       version                     Show version
 #   termio       help                        Show this help
 #
@@ -3891,10 +3895,14 @@ _startup_audit_warn() {
     while IFS= read -r _a; do
         [ -z "$_a" ] && continue
         _key=$(get_field "$_a" "IdentityFile")
-        [ -z "$_key" ] || [ ! -f "$_key" ] && { _flagged=$(( _flagged + 1 )); continue; }
+        if [ -z "$_key" ] || [ ! -f "$_key" ]; then
+            _flagged=$(( _flagged + 1 )); continue
+        fi
         _kname=$(basename "$_key")
-        find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
-            2>/dev/null | grep -q . && _flagged=$(( _flagged + 1 ))
+        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+                2>/dev/null | grep -q .; then
+            _flagged=$(( _flagged + 1 ))
+        fi
     done <<_EOSW
 $(printf '%s\n' "$_aliases")
 _EOSW
