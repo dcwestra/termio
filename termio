@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # termio — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
-# Version 3.8.0
+# Version 3.9.0
 #
 # USAGE:
 #   termio [-v]                              Interactive TUI/CLI menu
@@ -11,7 +11,7 @@
 #   termio [-v] info   <alias>               Show alias details + fingerprint
 #   termio [-v] edit   <alias>               Edit an alias
 #   termio [-v] rm     <alias>               Remove an alias
-#   termio [-v] test   <alias>               Test connectivity
+#   termio [-v] test   [alias]               Test one alias, or all if no alias given
 #   termio [-v] rotate <alias>               Rotate SSH key for an alias
 #   termio [-v] export [file]                Export aliases to a portable file
 #   termio [-v] import <file>                Import aliases from export file
@@ -56,13 +56,16 @@
 #   termio [-v] wake  <alias>               Send Wake-on-LAN magic packet
 #   termio [-v] log   [alias]               Show connection history
 #   termio [-v] diff                         Diff local aliases vs sync export
+#   termio       template list               List saved add-wizard templates
+#   termio       template save <name>        Save current defaults as a template
+#   termio       template rm   <name>        Remove a template
 #   termio       version                     Show version
 #   termio       help                        Show this help
 #
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.8.0"
+TERMIO_VERSION="3.9.0"
 
 set -e
 
@@ -432,6 +435,13 @@ list_aliases() {
     grep '^Host ' "$CONFIG_FILE" | awk '{print $2}' | grep -v '^\*$' || true
 }
 
+_warn_ssh_includes() {
+    [ -f "$CONFIG_FILE" ] || return 0
+    grep -q '^Include ' "$CONFIG_FILE" 2>/dev/null || return 0
+    warn "~/.ssh/config contains Include directives — termio won't manage those hosts."
+    printf "  Hosts in included files are visible to ssh but not to termio ls/status/audit.\n\n"
+}
+
 get_field() {
     [ -f "$CONFIG_FILE" ] || { printf ''; return; }
     awk -v a="$1" -v f="$2" '
@@ -478,6 +488,7 @@ alias_exists() {
 
 BACKUP_DIR="$CONF_DIR/backups"
 HISTORY_LOG="$CONF_DIR/history.log"
+TEMPLATE_FILE="$CONF_DIR/templates"
 BACKUP_MAX=5
 
 backup_config() {
@@ -696,6 +707,98 @@ prompt_advanced() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ── Templates ─────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+
+template_list_names() {
+    [ -f "$TEMPLATE_FILE" ] || return 0
+    grep '^name=' "$TEMPLATE_FILE" | sed 's/^name=//' 2>/dev/null || true
+}
+
+template_get() {
+    [ -f "$TEMPLATE_FILE" ] || { printf ''; return; }
+    awk -v tgt="$1" -v fld="$2" '
+        /^\[template\]/ { matched=0 }
+        /^name=/        { if (substr($0,6)==tgt) matched=1 }
+        matched && index($0, fld "=") == 1 { print substr($0, length(fld)+2); exit }
+    ' "$TEMPLATE_FILE"
+}
+
+template_remove_block() {
+    [ -f "$TEMPLATE_FILE" ] || return 0
+    awk -v tgt="$1" '
+        /^\[template\]/ { buf=$0; skip=0; next }
+        buf && /^name=/ { if (substr($0,6)==tgt) { skip=1; buf=""; next } printf "%s\n",buf; buf="" }
+        buf             { printf "%s\n",buf; buf="" }
+        skip && /^$/    { skip=0; next }
+        !skip           { print }
+    ' "$TEMPLATE_FILE" > "${TEMPLATE_FILE}.tmp" \
+        && mv "${TEMPLATE_FILE}.tmp" "$TEMPLATE_FILE" || true
+}
+
+template_write() {
+    _tn="$1"; _tu="$2"; _tp="$3"; _tg="$4"; _tk="$5"; _tnote="$6"; _ta="$7"
+    template_remove_block "$_tn"
+    {
+        printf '[template]\n'
+        printf 'name=%s\n'     "$_tn"
+        printf 'user=%s\n'     "$_tu"
+        printf 'port=%s\n'     "$_tp"
+        printf 'group=%s\n'    "$_tg"
+        printf 'key_type=%s\n' "$_tk"
+        printf 'note=%s\n'     "$_tnote"
+        printf 'alive=%s\n'    "$_ta"
+        printf '\n'
+    } >> "$TEMPLATE_FILE"
+}
+
+cmd_template() {
+    _tsub="${1:-list}"
+    case "$_tsub" in
+        list|ls|"")
+            _tnames=$(template_list_names)
+            if [ -z "$_tnames" ]; then
+                printf '\n  No templates saved. Create one with: termio template save <name>\n\n'
+                return 0
+            fi
+            printf '\n  %sSaved templates:%s\n\n' "$C_BOLD" "$C_RESET"
+            printf '%s\n' "$_tnames" | while IFS= read -r _tn; do
+                _tu=$(template_get "$_tn" "user")
+                _tp=$(template_get "$_tn" "port")
+                _tg=$(template_get "$_tn" "group")
+                _tk=$(template_get "$_tn" "key_type")
+                printf "  ${C_BOLD}%-20s${C_RESET}  user=%-12s port=%-6s group=%-14s key=%s\n" \
+                    "$_tn" "${_tu:-(prompt)}" "${_tp:-22}" "${_tg:-(none)}" "${_tk:-ed25519}"
+            done
+            printf '\n'
+            ;;
+        save)
+            _tname=$(sanitize_alias "${2:-}")
+            [ -z "$_tname" ] && die "Usage: termio template save <name>"
+            _def_ktype=$(pref_get "key_type"); [ -z "$_def_ktype" ] && _def_ktype="ed25519"
+            wt_input "Default username"           "$(whoami)"; _tu="$_PROMPT_RESULT"
+            wt_input "Default SSH port"           "22";        _tp="$_PROMPT_RESULT"
+            wt_input "Default group(s) / tags"    "";          _tg="$_PROMPT_RESULT"
+            wt_input "Default key type (ed25519/rsa/ecdsa)" "$_def_ktype"
+            case "$_PROMPT_RESULT" in ed25519|rsa|ecdsa) _tk="$_PROMPT_RESULT" ;; *) _tk="$_def_ktype" ;; esac
+            wt_input "Default note prefix (optional)"  ""; _tnote="$_PROMPT_RESULT"
+            wt_input "ServerAliveInterval (blank = none)" ""; _ta="$_PROMPT_RESULT"
+            template_write "$_tname" "$_tu" "$_tp" "$_tg" "$_tk" "$_tnote" "$_ta"
+            success "Template \"$_tname\" saved."
+            ;;
+        rm|remove)
+            _tname="${2:-}"
+            [ -z "$_tname" ] && die "Usage: termio template rm <name>"
+            template_remove_block "$_tname"
+            success "Template \"$_tname\" removed."
+            ;;
+        *)
+            die "Unknown subcommand: '$_tsub'  (use: list, save, rm)"
+            ;;
+    esac
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ── Commands ──────────────────────────────────────────────────────────────────
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -710,6 +813,39 @@ cmd_add() {
         printf '    4. Write a named alias to ~/.ssh/config\n'
         printf "    5. Connect with: ${C_BOLD}ssh <alias>${C_RESET}\n\n"
     }
+
+    # Template pre-fill (optional)
+    _T_USER=""; _T_PORT="22"; _T_GROUP=""; _T_KTYPE=""; _T_NOTE=""; _T_ALIVE=""
+    _tnames=$(template_list_names)
+    if [ -n "$_tnames" ]; then
+        if wt_yesno "Use a saved template as starting point?"; then
+            if [ "$HAS_WHIPTAIL" -eq 1 ]; then
+                set --
+                while IFS= read -r _tn; do
+                    set -- "$@" "$_tn" "  user=$(template_get "$_tn" user) port=$(template_get "$_tn" port)"
+                done <<_TTEOF
+$(printf '%s\n' "$_tnames")
+_TTEOF
+                _tsel=$(whiptail --title "termio v${TERMIO_VERSION}" \
+                    --cancel-button "Skip" \
+                    --menu "Select template:" "$TH" "$TW" 6 "$@" \
+                    3>&1 1>&2 2>&3) || _tsel=""
+            else
+                printf '\n  Available templates:\n'
+                printf '%s\n' "$_tnames" | while IFS= read -r _tn; do printf '    %s\n' "$_tn"; done
+                cli_prompt "Template name (blank = skip)" ""; _tsel="$_PROMPT_RESULT"
+            fi
+            if [ -n "$_tsel" ]; then
+                _T_USER=$(template_get "$_tsel" "user")
+                _T_PORT=$(template_get "$_tsel" "port")
+                _T_GROUP=$(template_get "$_tsel" "group")
+                _T_KTYPE=$(template_get "$_tsel" "key_type")
+                _T_NOTE=$(template_get "$_tsel" "note")
+                _T_ALIVE=$(template_get "$_tsel" "alive")
+                info "Using template: ${C_BOLD}$_tsel${C_RESET}"
+            fi
+        fi
+    fi
 
     wt_input "Alias name (e.g. homeserver, vps-prod)" ""
     while [ -z "$_PROMPT_RESULT" ]; do
@@ -728,10 +864,10 @@ cmd_add() {
         fi
     fi
 
-    wt_input "Short description / note (optional)" ""
+    wt_input "Short description / note (optional)" "${_T_NOTE:-}"
     NOTE="$_PROMPT_RESULT"
 
-    wt_input "Group(s) / tags (optional, comma-separated, e.g. homelab,work)" ""
+    wt_input "Group(s) / tags (optional, comma-separated, e.g. homelab,work)" "${_T_GROUP:-}"
     GROUP="$_PROMPT_RESULT"
 
     wt_input "Remote hostname or IP address" ""
@@ -740,11 +876,11 @@ cmd_add() {
     done
     REMOTE_HOST="$_PROMPT_RESULT"
 
-    wt_input "SSH port" "22"
+    wt_input "SSH port" "${_T_PORT:-22}"
     REMOTE_PORT="$_PROMPT_RESULT"
     case "$REMOTE_PORT" in ''|*[!0-9]*) REMOTE_PORT=22 ;; esac
 
-    wt_input "Remote username" "$(whoami)"
+    wt_input "Remote username" "${_T_USER:-$(whoami)}"
     while [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Username cannot be empty."; wt_input "Remote username" "$(whoami)"
     done
@@ -755,12 +891,18 @@ cmd_add() {
     if [ -n "$_saved" ]; then
         if wt_yesno "Route through a jump / bastion host?"; then
             if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-                wt_pick_alias "Select jump host alias:"; JUMP_HOST="$SELECTED_ALIAS"
+                if wt_pick_alias "Select first jump host:"; then
+                    JUMP_HOST="$SELECTED_ALIAS"
+                    wt_input "Additional hops? (comma-separated aliases, blank = none)" ""
+                    [ -n "$_PROMPT_RESULT" ] && JUMP_HOST="${JUMP_HOST},${_PROMPT_RESULT}"
+                fi
             else
                 cmd_list
-                cli_prompt "Jump host alias (blank = none)" ""; JUMP_HOST="$_PROMPT_RESULT"
+                printf "  Chains supported — e.g. bastion,internal\n"
+                cli_prompt "Jump host alias(es) (comma-separated, blank = none)" ""
+                JUMP_HOST="$_PROMPT_RESULT"
             fi
-            [ -n "$JUMP_HOST" ] && info "Jump host: ${C_BOLD}$JUMP_HOST${C_RESET}"
+            [ -n "$JUMP_HOST" ] && info "Jump chain: ${C_BOLD}$JUMP_HOST${C_RESET}"
         fi
     fi
 
@@ -770,6 +912,7 @@ cmd_add() {
     prompt_advanced
 
     _def_ktype=$(pref_get "key_type"); [ -z "$_def_ktype" ] && _def_ktype="ed25519"
+    [ -n "$_T_KTYPE" ] && _def_ktype="$_T_KTYPE"
     wt_input "SSH key type (ed25519 / rsa / ecdsa)" "$_def_ktype"
     case "$_PROMPT_RESULT" in
         ed25519|rsa|ecdsa) KEY_TYPE="$_PROMPT_RESULT" ;;
@@ -857,6 +1000,7 @@ cmd_list() {
         esac
         shift
     done
+    _warn_ssh_includes
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
         printf '\n  No aliases found in %s\n\n' "$CONFIG_FILE"; return 0
@@ -1102,13 +1246,21 @@ cmd_edit() {
     wt_input "Remote username" "$_cu"; _nu="${_PROMPT_RESULT:-$_cu}"
 
     _nj="$_cj"
-    if wt_yesno "Change jump / bastion host? (current: ${_cj:-none})"; then
+    if wt_yesno "Change jump / bastion host(s)? (current: ${_cj:-none})"; then
         _saved=$(list_aliases)
         if [ -n "$_saved" ]; then
             if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-                wt_pick_alias "Select new jump host (Cancel = remove):"; _nj="$SELECTED_ALIAS"
+                if wt_pick_alias "Select first jump host (Cancel = remove):"; then
+                    _nj="$SELECTED_ALIAS"
+                    wt_input "Additional hops? (comma-separated aliases, blank = none)" ""
+                    [ -n "$_PROMPT_RESULT" ] && _nj="${_nj},${_PROMPT_RESULT}"
+                else
+                    _nj=""
+                fi
             else
-                cmd_list; cli_prompt "New jump host alias (blank = remove)" ""; _nj="$_PROMPT_RESULT"
+                cmd_list
+                printf "  Chains supported — e.g. bastion,internal  (blank = remove)\n"
+                cli_prompt "Jump host alias(es)" ""; _nj="$_PROMPT_RESULT"
             fi
         else
             wt_msg "No other aliases to use as jump host."
@@ -1308,8 +1460,10 @@ cmd_rename() {
 # ── TEST ──────────────────────────────────────────────────────────────────────
 
 cmd_test() {
-    _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio test <alias>"
+    _alias="${1:-}"
+    if [ -z "$_alias" ]; then
+        cmd_status; return $?
+    fi
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
@@ -2782,8 +2936,6 @@ wt_status() {
     fi
     _timeout=8
     _total=$(printf '%s\n' "$_aliases" | grep -c . || true)
-    whiptail --title "termio — Status" \
-        --infobox "Testing ${_total} aliases in parallel (timeout: ${_timeout}s)..." 5 60
     _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
     while IFS= read -r _a; do
         [ -z "$_a" ] && continue
@@ -2803,6 +2955,16 @@ wt_status() {
     done <<_EOWST
 $(printf '%s\n' "$_aliases")
 _EOWST
+    # Gauge progress bar while probes run
+    {
+        while true; do
+            _done=$(ls "$_tmpdir" 2>/dev/null | wc -l | tr -d ' ')
+            printf '%d\n' "$(( _done * 100 / _total ))"
+            [ "$_done" -ge "$_total" ] && break
+            sleep 0.3
+        done
+    } | whiptail --title "termio — Status" \
+        --gauge "Testing $_total aliases in parallel (timeout: ${_timeout}s)..." 7 60 0 || true
     wait
     _txt=$(
         printf '%-18s %-22s %-16s %s\n' "ALIAS" "HOSTNAME" "STATUS" "LAST SEEN"
@@ -4306,6 +4468,7 @@ _EOSW
 }
 
 interactive_menu() {
+    _warn_ssh_includes
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         # Show audit warning as infobox briefly if keys need rotation
         _startup_audit_warn 2>/dev/null | grep -q 'need rotation' && \
@@ -4344,9 +4507,19 @@ interactive_menu() {
                         wt_show_info "$SELECTED_ALIAS"
                     fi ;;
                 test)
-                    if wt_pick_alias "Select alias to test:"; then
-                        wt_test_alias "$SELECTED_ALIAS"
-                    fi ;;
+                    _tc=$(whiptail --title "termio v${TERMIO_VERSION}" \
+                        --cancel-button "Back" \
+                        --menu "Test connections:" "$TH" "$TW" 2 \
+                        "one" "  Test a single alias" \
+                        "all" "  Test all connections" \
+                        3>&1 1>&2 2>&3) || _tc=""
+                    case "$_tc" in
+                        one)
+                            if wt_pick_alias "Select alias to test:"; then
+                                wt_test_alias "$SELECTED_ALIAS"
+                            fi ;;
+                        all) wt_status ;;
+                    esac ;;
                 status) wt_status ;;
                 run)
                     if wt_pick_alias "Select alias to run command on:" && [ -n "$SELECTED_ALIAS" ]; then
@@ -4775,6 +4948,7 @@ case "${1:-}" in
     log)               cmd_log    "${2:-}" ;;
     diff)              cmd_diff ;;
     wake)              cmd_wake   "${2:-}" ;;
+    template)          shift; cmd_template "$@" ;;
     version|--version) printf 'termio version %s\n' "$TERMIO_VERSION" ;;
     help|--help|-h)    cmd_help ;;
     *)                 die "Unknown command: '$1'  (try: termio help)" ;;

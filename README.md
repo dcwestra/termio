@@ -122,6 +122,8 @@ termio copy /local <alias>:/remote  # Upload files
 
 ```sh
 termio status                     # Parallel reachability dashboard for all aliases
+termio test                       # Same as status — test all connections at once
+termio test <alias>               # Test a single alias with detailed output
 termio audit                      # Audit SSH key ages — flag keys past rotation threshold
 ```
 
@@ -213,6 +215,18 @@ termio prefer <alias> auto_agent off # Disable
 termio prefer <alias> sshpass        # Store an obfuscated password for this alias
 termio prefer <alias> sshpass clear  # Remove stored password
 ```
+
+### Templates
+
+Save a set of defaults (user, port, group, key type) as a named template to pre-fill the `add` wizard.
+
+```sh
+termio template list              # Show saved templates
+termio template save <name>       # Save a new template (interactive prompts)
+termio template rm <name>         # Remove a template
+```
+
+When running `termio add`, if templates exist you'll be offered a picker to pre-fill the wizard.
 
 ### Clone and rename
 
