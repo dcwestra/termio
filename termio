@@ -3724,10 +3724,10 @@ cmd_log() {
     fi
 
     printf '\n'
-    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
-    printf "${C_LBLUE}║${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}║${C_RESET}\n" \
+    _ls_hline "  ┌" "┬" "┐" "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+    printf "  ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET} ${C_BOLD}%-*s${C_RESET} ${C_LBLUE}│${C_RESET}\n" \
         "$_CW_DATE" "DATE" "$_CW_ALIAS" "ALIAS" "$_CW_DUR" "DURATION" "$_CW_EXIT" "EXIT"
-    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+    _ls_hline "  ├" "┼" "┤" "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
 
     printf '%s\n' "$_log_data" | tail -50 | while IFS='|' read -r _lts _la _ld _lx; do
         [ -z "$_la" ] && continue
@@ -3739,10 +3739,10 @@ cmd_log() {
             _ldstr=$(printf '%ds' "$_ld")
         fi
         [ "$_lx" = "0" ] && _xc="${C_GREEN}" || _xc="${C_YELLOW}"
-        printf "${C_LBLUE}║${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} ${_xc}%-*s${C_RESET} ${C_LBLUE}║${C_RESET}\n" \
+        printf "  ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} %-*s ${C_LBLUE}│${C_RESET} ${_xc}%-*s${C_RESET} ${C_LBLUE}│${C_RESET}\n" \
             "$_CW_DATE" "$_lts" "$_CW_ALIAS" "$_la" "$_CW_DUR" "$_ldstr" "$_CW_EXIT" "$_lx"
     done
-    _ls_hline "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
+    _ls_hline "  └" "┴" "┘" "$_CW_DATE" "$_CW_ALIAS" "$_CW_DUR" "$_CW_EXIT"
     printf '\n'
 }
 

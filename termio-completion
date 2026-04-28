@@ -44,7 +44,7 @@ _termio_complete() {
     cur="${words[$cword]}"
     prev="${words[$((cword - 1))]}"
 
-    local main_cmds="add connect ls list info test edit rotate rm remove export import prefer run copy status audit tunnel agent snip sync version help"
+    local main_cmds="add connect ls list info test edit rotate rm remove clone rename tag untag pin unpin export import prefer run copy open wake status audit tunnel agent snip sync backup log diff template version help"
     local snip_subcmds="list ls add run info edit rm remove"
     local sync_subcmds="status init detach keys"
     local keys_subcmds="status enable disable update restore"
@@ -222,6 +222,18 @@ _termio() {
         'agent:SSH agent key management'
         'snip:Snippet commands'
         'sync:Sync commands'
+        'clone:Clone an existing alias'
+        'rename:Rename an alias'
+        'tag:Add a group tag to an alias'
+        'untag:Remove a group tag from an alias'
+        'pin:Pin an alias to the top of ls'
+        'unpin:Unpin an alias'
+        'open:Open SFTP session for alias'
+        'wake:Send Wake-on-LAN to alias'
+        'backup:List or restore config backups'
+        'log:Show connection history'
+        'diff:Diff local config against sync folder'
+        'template:Manage alias templates'
         'version:Show version'
         'help:Show help'
     )
