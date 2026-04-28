@@ -364,13 +364,17 @@ check_deps() {
 
 cli_prompt() {
     _label="$1"; _default="${2:-}"
+    _PROMPT_CANCELLED=0
     if [ -n "$_default" ]; then
         printf "  ${C_BOLD}%s${C_RESET} [${C_DIM}%s${C_RESET}]: " "$_label" "$_default"
     else
         printf "  ${C_BOLD}%s${C_RESET}: " "$_label"
     fi
-    IFS= read -r _PROMPT_RESULT
-    [ -z "$_PROMPT_RESULT" ] && _PROMPT_RESULT="$_default"
+    if IFS= read -r _PROMPT_RESULT; then
+        [ -z "$_PROMPT_RESULT" ] && _PROMPT_RESULT="$_default"
+    else
+        _PROMPT_RESULT=""; _PROMPT_CANCELLED=1
+    fi
 }
 
 cli_prompt_secret() {
@@ -385,10 +389,11 @@ cli_prompt_secret() {
 
 wt_input() {
     _label="$1"; _default="${2:-}"
+    _PROMPT_CANCELLED=0
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _PROMPT_RESULT=$(whiptail --inputbox "$_label" 8 64 "$_default" \
             --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
-            3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
+            3>&1 1>&2 2>&3) || { _PROMPT_RESULT=""; _PROMPT_CANCELLED=1; }
     else
         cli_prompt "$_label" "$_default"
     fi
@@ -849,9 +854,10 @@ _TTEOF
     fi
 
     wt_input "Alias name (e.g. homeserver, vps-prod)" ""
-    while [ -z "$_PROMPT_RESULT" ]; do
+    while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Alias cannot be empty."; wt_input "Alias name" ""
     done
+    [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
     ALIAS=$(sanitize_alias "$_PROMPT_RESULT")
     [ -z "$ALIAS" ] && die "Alias contains no valid characters."
     info "Using alias: ${C_BOLD}$ALIAS${C_RESET}"
@@ -872,9 +878,10 @@ _TTEOF
     GROUP="$_PROMPT_RESULT"
 
     wt_input "Remote hostname or IP address" ""
-    while [ -z "$_PROMPT_RESULT" ]; do
+    while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Hostname cannot be empty."; wt_input "Remote hostname or IP" ""
     done
+    [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
     REMOTE_HOST="$_PROMPT_RESULT"
 
     wt_input "SSH port" "${_T_PORT:-22}"
@@ -882,9 +889,10 @@ _TTEOF
     case "$REMOTE_PORT" in ''|*[!0-9]*) REMOTE_PORT=22 ;; esac
 
     wt_input "Remote username" "${_T_USER:-$(whoami)}"
-    while [ -z "$_PROMPT_RESULT" ]; do
+    while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Username cannot be empty."; wt_input "Remote username" "$(whoami)"
     done
+    [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
     REMOTE_USER="$_PROMPT_RESULT"
 
     JUMP_HOST=""
@@ -1311,9 +1319,10 @@ cmd_clone() {
         ALIAS=$(sanitize_alias "$2")
     else
         wt_input "New alias name" ""
-        while [ -z "$_PROMPT_RESULT" ]; do
+        while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
             wt_msg "Alias cannot be empty."; wt_input "New alias name" ""
         done
+        [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
         ALIAS=$(sanitize_alias "$_PROMPT_RESULT")
     fi
     [ -z "$ALIAS" ] && die "Alias contains no valid characters."
@@ -2546,9 +2555,10 @@ cmd_snip_info() {
 cmd_snip_add() {
     printf '\n'
     wt_input "Snippet name (e.g. docker-restart, update-system)" ""
-    while [ -z "$_PROMPT_RESULT" ]; do
+    while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Name cannot be empty."; wt_input "Snippet name" ""
     done
+    [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
     _sname=$(printf '%s' "$_PROMPT_RESULT" \
         | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd 'a-z0-9-')
     [ -z "$_sname" ] && die "Snippet name contains no valid characters."
@@ -2565,9 +2575,10 @@ cmd_snip_add() {
     _sdesc="$_PROMPT_RESULT"
 
     wt_input "Command to run on the remote host" ""
-    while [ -z "$_PROMPT_RESULT" ]; do
+    while [ "$_PROMPT_CANCELLED" -eq 0 ] && [ -z "$_PROMPT_RESULT" ]; do
         wt_msg "Command cannot be empty."; wt_input "Command" ""
     done
+    [ "$_PROMPT_CANCELLED" -eq 1 ] && { printf '  Cancelled.\n\n'; return 0; }
     _scmd="$_PROMPT_RESULT"
 
     _ssudo="no"
