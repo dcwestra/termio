@@ -44,7 +44,7 @@ _termio_complete() {
     cur="${words[$cword]}"
     prev="${words[$((cword - 1))]}"
 
-    local main_cmds="add connect ls list info test edit rotate rm remove clone rename tag untag pin unpin export import prefer run copy open wake status audit tunnel agent snip sync backup log diff template version help"
+    local main_cmds="add connect ls list info test edit rotate rm remove clone rename tag untag pin unpin export import prefer run copy open wake status audit tunnel agent snip sync backup bootstrap log diff template version help"
     local snip_subcmds="list ls add run info edit rm remove"
     local sync_subcmds="status init detach keys"
     local keys_subcmds="status enable disable update restore"
@@ -231,6 +231,7 @@ _termio() {
         'open:Open SFTP session for alias'
         'wake:Send Wake-on-LAN to alias'
         'backup:List or restore config backups'
+        'bootstrap:Deploy shell profile to a remote host'
         'log:Show connection history'
         'diff:Diff local config against sync folder'
         'template:Manage alias templates'

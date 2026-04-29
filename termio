@@ -557,6 +557,305 @@ cmd_backup() {
     esac
 }
 
+# ── bootstrap ──────────────────────────────────────────────────────────────────
+# Generates the shell profile content deployed to remote hosts.
+# Uses single quotes throughout to avoid variable expansion at definition time.
+_termio_profile_content() {
+    cat << 'PROFILE_END'
+# termio shell profile — sourced by .zshrc / .bashrc
+# Snippet fuzzy-insert: Ctrl+X s  (requires fzf on remote)
+_termio_snip() {
+    _tsf="$HOME/.config/termio/snippet-list.txt"
+    [ -f "$_tsf" ] || return 0
+    command -v fzf >/dev/null 2>&1 || return 0
+    _tsel=$(awk -F'\t' '{printf "%-26s  %s\n", $1, $3}' "$_tsf" \
+        | fzf --height=40% --reverse --no-sort --prompt="snippet> " \
+              --preview='f=~/.config/termio/snippet-list.txt
+n=$(echo {1} | tr -d " ")
+awk -F"\t" -v n="$n" "\$1==n{print \$2}" "$f"' \
+              --preview-window=down:2:wrap)
+    [ -z "$_tsel" ] && return 0
+    _tname=$(printf '%s' "$_tsel" | awk '{print $1}')
+    _tcmd=$(awk -F'\t' -v n="$_tname" '$1==n{print $2; exit}' "$_tsf")
+    [ -z "$_tcmd" ] && return 0
+    if [ -n "$ZSH_VERSION" ]; then
+        LBUFFER="${LBUFFER}${_tcmd}"
+        zle reset-prompt
+    elif [ -n "$BASH_VERSION" ]; then
+        READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}${_tcmd}${READLINE_LINE:$READLINE_POINT}"
+        READLINE_POINT=$(( READLINE_POINT + ${#_tcmd} ))
+    fi
+}
+if [ -n "$ZSH_VERSION" ]; then
+    zle -N _termio_snip
+    bindkey '^Xs' _termio_snip
+fi
+if [ -n "$BASH_VERSION" ]; then
+    bind -x '"\C-xs": _termio_snip' 2>/dev/null || true
+fi
+PROFILE_END
+}
+
+# Check for fzf on remote and offer to install it if missing.
+# Sets _fzf_path_prefix to a PATH prefix line if installed via git (no sudo).
+_bootstrap_check_deps() {
+    _bcd_alias="$1"
+    _fzf_path_prefix=""
+
+    printf '  Checking dependencies on %s…\n' "$_bcd_alias"
+    _fzf_ok=$(ssh -F "$CONFIG_FILE" "$_bcd_alias" \
+        'command -v fzf >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)
+
+    if [ "$_fzf_ok" = "yes" ]; then
+        printf '  %s fzf found\n' "${C_GREEN}✓${C_RESET}"
+        return 0
+    fi
+
+    printf '  %s fzf not found — required for the snippet widget\n' "${C_YELLOW}⚠${C_RESET}"
+
+    # Detect package manager on remote
+    _bcd_pm=$(ssh -F "$CONFIG_FILE" "$_bcd_alias" '
+        for _p in apt-get dnf yum pacman brew apk zypper; do
+            command -v "$_p" >/dev/null 2>&1 && printf "%s" "$_p" && exit 0
+        done
+    ' 2>/dev/null)
+
+    # Build package-manager install command
+    _bcd_pm_cmd=""
+    case "$_bcd_pm" in
+        apt-get|apt) _bcd_pm_cmd="sudo apt-get install -y fzf" ;;
+        dnf)         _bcd_pm_cmd="sudo dnf install -y fzf" ;;
+        yum)         _bcd_pm_cmd="sudo yum install -y fzf" ;;
+        pacman)      _bcd_pm_cmd="sudo pacman -S --noconfirm fzf" ;;
+        brew)        _bcd_pm_cmd="brew install fzf" ;;
+        apk)         _bcd_pm_cmd="sudo apk add --no-cache fzf" ;;
+        zypper)      _bcd_pm_cmd="sudo zypper install -y fzf" ;;
+    esac
+
+    # Check if git is available for no-sudo fallback
+    _bcd_git=$(ssh -F "$CONFIG_FILE" "$_bcd_alias" \
+        'command -v git >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)
+
+    printf '\n'
+    if [ -n "$_bcd_pm_cmd" ]; then
+        printf '  %s) Install via %s  (%s)\n' \
+            "${C_BOLD}1${C_RESET}" "$_bcd_pm" "${C_DIM}${_bcd_pm_cmd}${C_RESET}"
+    fi
+    if [ "$_bcd_git" = "yes" ]; then
+        printf '  %s) Install via git  %s\n' \
+            "${C_BOLD}2${C_RESET}" "${C_DIM}(no sudo — installs to ~/.fzf/bin)${C_RESET}"
+    fi
+    printf '  %s) Skip  %s\n\n' \
+        "${C_BOLD}s${C_RESET}" "${C_DIM}(snippet widget inactive until fzf is installed)${C_RESET}"
+
+    printf '  Choice [1/2/s]: '
+    IFS= read -r _bcd_ans
+
+    case "$_bcd_ans" in
+        1)
+            if [ -z "$_bcd_pm_cmd" ]; then
+                warn "No supported package manager detected."; return 0
+            fi
+            printf '  Running: %s\n\n' "$_bcd_pm_cmd"
+            ssh -t -F "$CONFIG_FILE" "$_bcd_alias" "$_bcd_pm_cmd"
+            _fzf_ok2=$(ssh -F "$CONFIG_FILE" "$_bcd_alias" \
+                'command -v fzf >/dev/null 2>&1 && echo yes || echo no' 2>/dev/null)
+            if [ "$_fzf_ok2" = "yes" ]; then
+                ok "fzf installed on $_bcd_alias"
+            else
+                warn "fzf install may have failed — verify manually on $_bcd_alias"
+            fi
+            ;;
+        2)
+            if [ "$_bcd_git" != "yes" ]; then
+                warn "git not available on $_bcd_alias."; return 0
+            fi
+            printf '  Cloning fzf to ~/.fzf on %s…\n' "$_bcd_alias"
+            ssh -t -F "$CONFIG_FILE" "$_bcd_alias" \
+                'git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf 2>&1 \
+                 && ~/.fzf/install --bin --no-update-rc 2>&1'
+            _fzf_ok3=$(ssh -F "$CONFIG_FILE" "$_bcd_alias" \
+                'test -x ~/.fzf/bin/fzf && echo yes || echo no' 2>/dev/null)
+            if [ "$_fzf_ok3" = "yes" ]; then
+                ok "fzf installed to ~/.fzf/bin on $_bcd_alias"
+                # Profile needs to add ~/.fzf/bin to PATH
+                _fzf_path_prefix='[ -d "$HOME/.fzf/bin" ] && export PATH="$HOME/.fzf/bin:$PATH"'
+            else
+                warn "fzf git install may have failed — verify manually on $_bcd_alias"
+            fi
+            ;;
+        s|S|"")
+            printf '  Skipping — snippet widget inactive until fzf is available.\n'
+            ;;
+        *)
+            printf '  Skipping.\n'
+            ;;
+    esac
+    printf '\n'
+}
+
+# Generates TSV snippet list: name <TAB> cmd <TAB> desc
+_termio_snip_list_content() {
+    _tsnames=$(snip_list_names)
+    [ -z "$_tsnames" ] && return 0
+    printf '%s\n' "$_tsnames" | while IFS= read -r _tsn; do
+        [ -z "$_tsn" ] && continue
+        _tsc=$(snip_get "$_tsn" "cmd")
+        _tsd=$(snip_get "$_tsn" "desc")
+        printf '%s\t%s\t%s\n' "$_tsn" "$_tsc" "$_tsd"
+    done
+}
+
+cmd_bootstrap() {
+    _bsub="${1:-}"; _bal="${2:-}"
+    case "$_bsub" in
+        --list|-l|list)
+            _bootstrap_list; return 0 ;;
+        --remove|-r|remove)
+            [ -z "$_bal" ] && die "Usage: termio bootstrap remove <alias>"
+            alias_exists "$_bal" || die "Alias '$_bal' not found"
+            _bootstrap_remove "$_bal"; return 0 ;;
+        --update|-u|update)
+            [ -z "$_bal" ] && die "Usage: termio bootstrap update <alias>"
+            alias_exists "$_bal" || die "Alias '$_bal' not found"
+            _bootstrap_push_snips "$_bal" && ok "Snippets synced to $_bal"; return 0 ;;
+        "")
+            die "Usage: termio bootstrap <alias> | list | update <alias> | remove <alias>" ;;
+        *)
+            # treat first arg as alias if it's not a subcommand
+            _bal="$_bsub"
+            alias_exists "$_bal" || die "Alias '$_bal' not found"
+            _bootstrap_install "$_bal" ;;
+    esac
+}
+
+_bootstrap_install() {
+    _bia="$1"
+    info "Bootstrapping termio profile on ${C_BOLD}$_bia${C_RESET}…"
+    printf '\n'
+
+    # Check / install dependencies
+    _fzf_path_prefix=""
+    _bootstrap_check_deps "$_bia"
+
+    # Push profile script (prepend PATH fix if fzf was git-installed)
+    {
+        [ -n "$_fzf_path_prefix" ] && printf '%s\n' "$_fzf_path_prefix"
+        _termio_profile_content
+    } | ssh -F "$CONFIG_FILE" "$_bia" \
+        'mkdir -p ~/.config/termio && cat > ~/.config/termio/shell-init.sh && chmod 600 ~/.config/termio/shell-init.sh' \
+        || die "Failed to copy profile to $_bia"
+    # Push snippet list
+    _bootstrap_push_snips "$_bia"
+    # Add source guard to .zshrc and .bashrc (idempotent)
+    ssh -F "$CONFIG_FILE" "$_bia" '
+        _sl="[ -f \"\$HOME/.config/termio/shell-init.sh\" ] && . \"\$HOME/.config/termio/shell-init.sh\""
+        for _sf in ~/.zshrc ~/.bashrc; do
+            [ -f "$_sf" ] || continue
+            grep -qF "termio/shell-init.sh" "$_sf" 2>/dev/null && continue
+            printf "\n# termio profile\n%s\n" "$_sl" >> "$_sf"
+            printf "  appended to %s\n" "$_sf"
+        done
+    '
+    pref_set "bootstrap_$_bia" "$(date '+%Y-%m-%d')"
+    ok "Profile installed on $_bia — active from next login (or: source ~/.zshrc)"
+    printf '\n'
+}
+
+_bootstrap_push_snips() {
+    _bpa="$1"
+    _termio_snip_list_content | ssh -F "$CONFIG_FILE" "$_bpa" \
+        'mkdir -p ~/.config/termio && cat > ~/.config/termio/snippet-list.txt'
+}
+
+_bootstrap_remove() {
+    _bra="$1"
+    info "Removing termio profile from ${C_BOLD}$_bra${C_RESET}…"
+    ssh -F "$CONFIG_FILE" "$_bra" '
+        rm -f ~/.config/termio/shell-init.sh ~/.config/termio/snippet-list.txt
+        for _sf in ~/.zshrc ~/.bashrc; do
+            [ -f "$_sf" ] || continue
+            grep -qF "termio/shell-init.sh" "$_sf" 2>/dev/null || continue
+            # Remove "# termio profile\n<source line>" block
+            sed -i '/^# termio profile$/{N;d}' "$_sf" 2>/dev/null || \
+            sed -i'' '/^# termio profile$/{N;d}' "$_sf" 2>/dev/null || true
+            sed -i "/termio\/shell-init.sh/d" "$_sf" 2>/dev/null || \
+            sed -i'' "/termio\/shell-init.sh/d" "$_sf" 2>/dev/null || true
+            printf "  cleaned %s\n" "$_sf"
+        done
+    '
+    pref_set "bootstrap_$_bra" ""
+    ok "Profile removed from $_bra"
+    printf '\n'
+}
+
+_bootstrap_list() {
+    printf '\n  %s\n\n' "${C_LBLUE}${C_BOLD}Bootstrapped aliases${C_RESET}"
+    _bfound=0
+    awk '/^Host / && !/[*?]/ {print $2}' "$CONFIG_FILE" 2>/dev/null | \
+    while IFS= read -r _ba; do
+        _bdate=$(pref_get "bootstrap_$_ba" "")
+        [ -z "$_bdate" ] && continue
+        printf '  %-28s  %s\n' "${C_BOLD}$_ba${C_RESET}" "$_bdate"
+        _bfound=1
+    done
+    [ "$_bfound" -eq 0 ] && printf '  (none)\n'
+    printf '\n'
+}
+
+# Ephemeral per-session profile injection.  Called from cmd_connect with --profile.
+_connect_with_profile() {
+    _cpa="$1"   # alias
+    _tag="t$$"
+    _tdir="/tmp/._termio_${_tag}"
+
+    info "Preparing session profile for ${C_BOLD}$_cpa${C_RESET}…"
+    printf '\n'
+
+    # Check deps — offer install if fzf missing
+    _fzf_path_prefix=""
+    _bootstrap_check_deps "$_cpa"
+
+    # Push profile + snippets in two non-interactive connections
+    {
+        [ -n "$_fzf_path_prefix" ] && printf '%s\n' "$_fzf_path_prefix"
+        _termio_profile_content
+    } | ssh -F "$CONFIG_FILE" "$_cpa" \
+        "mkdir -p '${_tdir}' ~/.config/termio && cat > '${_tdir}/profile.sh'" \
+        || die "Could not push profile to $_cpa"
+    _termio_snip_list_content | ssh -F "$CONFIG_FILE" "$_cpa" \
+        "cat > '${_tdir}/snips.txt' && cp '${_tdir}/snips.txt' ~/.config/termio/snippet-list.txt"
+
+    # Detect remote login shell
+    _cpsh=$(ssh -F "$CONFIG_FILE" "$_cpa" 'printf "%s" "$SHELL"' 2>/dev/null)
+
+    sleep 0.2
+    clear 2>/dev/null || printf '\033[2J\033[H'
+    set +e
+    case "$_cpsh" in
+        */zsh)
+            ssh -F "$CONFIG_FILE" "$_cpa" "
+                mkdir -p '${_tdir}/zd'
+                { printf '%s\n' '[ -f \"\$HOME/.zshrc\" ] && . \"\$HOME/.zshrc\" 2>/dev/null'
+                  cat '${_tdir}/profile.sh'; } > '${_tdir}/zd/.zshrc'
+            "
+            ssh -t -F "$CONFIG_FILE" "$_cpa" \
+                "ZDOTDIR='${_tdir}/zd' zsh -i; rm -rf '${_tdir}'"
+            ;;
+        *)
+            ssh -F "$CONFIG_FILE" "$_cpa" "
+                { printf '%s\n' '[ -f \"\$HOME/.bashrc\" ] && . \"\$HOME/.bashrc\" 2>/dev/null'
+                  cat '${_tdir}/profile.sh'; } > '${_tdir}/rc.sh'
+            "
+            ssh -t -F "$CONFIG_FILE" "$_cpa" \
+                "bash --rcfile '${_tdir}/rc.sh' -i; rm -rf '${_tdir}'"
+            ;;
+    esac
+    _cp_exit=$?
+    set -e
+    return "$_cp_exit"
+}
+
 # write_config_block <alias> <host> <user> <port> <keyfile>
 #                    <jump>  <note> <alive> <fwdagent> <localfwd> [group]
 write_config_block() {
@@ -3303,16 +3602,17 @@ _wt_snip_menu() {
 # connection gets a clean terminal, then redraws the banner on return.
 
 cmd_connect() {
-    _use_agent=0; _use_sshpass=0; _alias=""
+    _use_agent=0; _use_sshpass=0; _use_profile=0; _alias=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --agent)   _use_agent=1 ;;
-            --sshpass) _use_sshpass=1 ;;
-            *)         _alias="$1" ;;
+            --agent)      _use_agent=1 ;;
+            --sshpass)    _use_sshpass=1 ;;
+            --profile|-P) _use_profile=1 ;;
+            *)            _alias="$1" ;;
         esac
         shift
     done
-    [ -z "$_alias" ] && die "Usage: termio connect <alias> [--agent] [--sshpass]"
+    [ -z "$_alias" ] && die "Usage: termio connect <alias> [--agent] [--sshpass] [--profile|-P]"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
 
     # Apply per-alias preferences (flags override)
@@ -3328,6 +3628,25 @@ cmd_connect() {
     info "Connecting to ${C_BOLD}$_alias${C_RESET} (${_user}@${_host}:${_port})"
     printf "  Press ${C_BOLD}Ctrl+D${C_RESET} or type ${C_BOLD}exit${C_RESET} to return to termio.\n\n"
     pref_set "last_connect_${_alias}" "$(date '+%Y-%m-%d %H:%M')"
+
+    # Auto-bootstrap: if enabled and alias not yet bootstrapped, prompt once
+    if [ "$(pref_get 'auto_bootstrap' '0')" = "1" ]; then
+        if [ -z "$(pref_get "bootstrap_$_alias" "")" ]; then
+            printf '  %s No termio profile on %s — bootstrap now? [Y/n] ' \
+                "${C_YELLOW}⚡${C_RESET}" "$_alias"
+            IFS= read -r _ab_ans
+            case "${_ab_ans:-y}" in
+                n|N) ;;
+                *) _bootstrap_install "$_alias" ;;
+            esac
+        fi
+    fi
+
+    # Ephemeral profile mode: inject init files, connect with modified shell startup
+    if [ "$_use_profile" -eq 1 ]; then
+        _connect_with_profile "$_alias"
+        return $?
+    fi
 
     # Auto-add key to agent if requested
     if [ "$_use_agent" -eq 1 ]; then
@@ -4453,6 +4772,50 @@ _wt_manage_menu() {
     done
 }
 
+_wt_bootstrap_menu() {
+    while true; do
+        _title=$(_wt_title)
+        _bchoice=$(whiptail --title "$_title — Bootstrap" \
+            --cancel-button "Back" \
+            --menu "Deploy shell profile + snippet widget to remote hosts:" "$TH" "$TW" 6 \
+            "install" "  Install profile on an alias" \
+            "connect" "  Connect with profile (ephemeral session)" \
+            "update"  "  Push updated snippets to alias" \
+            "remove"  "  Remove profile from alias" \
+            "list"    "  List bootstrapped aliases" \
+            "prefs"   "  Bootstrap auto-prompt preference" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$_bchoice" in
+            install)
+                wt_pick_alias "Select alias to bootstrap:"
+                [ -n "$SELECTED_ALIAS" ] && cmd_bootstrap "$SELECTED_ALIAS" ;;
+            connect)
+                wt_pick_alias "Select alias for profile session:"
+                [ -n "$SELECTED_ALIAS" ] && cmd_connect --profile "$SELECTED_ALIAS" ;;
+            update)
+                wt_pick_alias "Select alias to push snippets to:"
+                [ -n "$SELECTED_ALIAS" ] && cmd_bootstrap update "$SELECTED_ALIAS" ;;
+            remove)
+                wt_pick_alias "Select alias to remove profile from:"
+                [ -n "$SELECTED_ALIAS" ] && cmd_bootstrap remove "$SELECTED_ALIAS" ;;
+            list)
+                _bltxt=$(cmd_bootstrap list 2>&1)
+                wt_scrollmsg "termio — Bootstrapped Aliases" "$_bltxt" ;;
+            prefs)
+                _bpchoice=$(whiptail --title "$(_wt_title) — Bootstrap Prefs" \
+                    --menu "Bootstrap preferences:" "$TH" "$TW" 2 \
+                    "auto_on"  "  Auto-prompt to bootstrap on first connect" \
+                    "auto_off" "  Disable auto-prompt (manual only)" \
+                    3>&1 1>&2 2>&3) || true
+                case "$_bpchoice" in
+                    auto_on)  pref_set "auto_bootstrap" "1"; success "Auto-bootstrap enabled." ;;
+                    auto_off) pref_set "auto_bootstrap" "0"; success "Auto-bootstrap disabled." ;;
+                esac ;;
+            "") return 0 ;;
+        esac
+    done
+}
+
 # Startup audit check — print one-liner warning if keys need rotation (interactive only)
 _startup_audit_warn() {
     _threshold=$(pref_get "audit_threshold")
@@ -4492,21 +4855,22 @@ interactive_menu() {
             _title=$(_wt_title)
             CHOICE=$(whiptail --title "$_title" \
                 --cancel-button "Exit" \
-                --menu "Choose an action:" "$TH" "$TW" 14 \
-                "connect" "  Connect to a saved alias" \
-                "add"     "  Add a new SSH alias" \
-                "info"    "  Show alias details" \
-                "test"    "  Test a connection" \
-                "status"  "  Status dashboard — all connections" \
-                "run"     "  Run a one-off remote command" \
-                "copy"    "  Copy files to/from alias (sftp)" \
-                "manage"  "  Manage ▶  (edit / rotate / audit / rm / export)" \
-                "snip"    "  Snippets ▶  — reusable remote commands" \
-                "tunnel"  "  Tunnels ▶  — named port-forward profiles" \
-                "agent"   "  Agent ▶  — SSH key agent management" \
-                "sync"    "  Sync ▶  — mirror to NAS / cloud / USB" \
-                "prefs"   "  Preferences" \
-                "help"    "  Help" \
+                --menu "Choose an action:" "$TH" "$TW" 15 \
+                "connect"   "  Connect to a saved alias" \
+                "add"       "  Add a new SSH alias" \
+                "info"      "  Show alias details" \
+                "test"      "  Test a connection" \
+                "status"    "  Status dashboard — all connections" \
+                "run"       "  Run a one-off remote command" \
+                "copy"      "  Copy files to/from alias (sftp)" \
+                "bootstrap" "  Bootstrap ▶  — deploy snippet widget to remote hosts" \
+                "manage"    "  Manage ▶  (edit / rotate / audit / rm / export)" \
+                "snip"      "  Snippets ▶  — reusable remote commands" \
+                "tunnel"    "  Tunnels ▶  — named port-forward profiles" \
+                "agent"     "  Agent ▶  — SSH key agent management" \
+                "sync"      "  Sync ▶  — mirror to NAS / cloud / USB" \
+                "prefs"     "  Preferences" \
+                "help"      "  Help" \
                 3>&1 1>&2 2>&3) || break
 
             case "$CHOICE" in
@@ -4558,8 +4922,9 @@ interactive_menu() {
                                 "$(printf '%s\n%s' "$_wt_hdr" "$_wt_out")"
                         fi
                     fi ;;
-                copy) cmd_copy_wizard ;;
-                manage) _wt_manage_menu ;;
+                copy)      cmd_copy_wizard ;;
+                bootstrap) _wt_bootstrap_menu ;;
+                manage)    _wt_manage_menu ;;
                 tunnel) _wt_tunnel_menu ;;
                 agent)  _wt_agent_menu ;;
                 snip)   _wt_snip_menu ;;
@@ -4596,6 +4961,7 @@ interactive_menu() {
             printf "  ${C_BOLD}ag)${C_RESET} Agent — SSH key agent management\n"
             printf "  ${C_BOLD}sn)${C_RESET} Snippets — reusable remote commands\n"
             printf "  ${C_BOLD}sy)${C_RESET} Sync — mirror to NAS / cloud / USB\n"
+            printf "  ${C_BOLD}bs)${C_RESET} Bootstrap — deploy snippet widget to remote hosts\n"
             printf "  ${C_BOLD} p)${C_RESET} Preferences\n"
             printf "  ${C_BOLD} h)${C_RESET} Help\n"
             printf "  ${C_BOLD} q)${C_RESET} Quit\n\n"
@@ -4811,6 +5177,42 @@ interactive_menu() {
                             b|back|"") break ;;
                         esac
                     done ;;
+                bs|bootstrap)
+                    while true; do
+                        printf "\n  ${C_LBLUE}${C_BOLD}── Bootstrap ───────────────────────────────────${C_RESET}\n"
+                        printf "  ${C_BOLD}1)${C_RESET} Install profile on an alias\n"
+                        printf "  ${C_BOLD}2)${C_RESET} Connect with profile (ephemeral session)\n"
+                        printf "  ${C_BOLD}3)${C_RESET} Push updated snippets to alias\n"
+                        printf "  ${C_BOLD}4)${C_RESET} Remove profile from alias\n"
+                        printf "  ${C_BOLD}5)${C_RESET} List bootstrapped aliases\n"
+                        printf "  ${C_BOLD}6)${C_RESET} Enable auto-bootstrap prompt on connect\n"
+                        printf "  ${C_BOLD}7)${C_RESET} Disable auto-bootstrap prompt\n"
+                        printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
+                        cli_prompt "Choice" ""
+                        case "$_PROMPT_RESULT" in
+                            1|install)
+                                cmd_list
+                                cli_prompt "Alias to bootstrap" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap "$_PROMPT_RESULT" ;;
+                            2|connect)
+                                cmd_list
+                                cli_prompt "Alias for profile session" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_connect --profile "$_PROMPT_RESULT" ;;
+                            3|update|push)
+                                cmd_list
+                                cli_prompt "Alias to push updated snippets to" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap update "$_PROMPT_RESULT" ;;
+                            4|remove)
+                                cmd_list
+                                cli_prompt "Alias to remove profile from" ""
+                                [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap remove "$_PROMPT_RESULT" ;;
+                            5|list) cmd_bootstrap list ;;
+                            6|auto_on)  pref_set "auto_bootstrap" "1"; success "Auto-bootstrap enabled." ;;
+                            7|auto_off) pref_set "auto_bootstrap" "0"; success "Auto-bootstrap disabled." ;;
+                            b|back|"") break ;;
+                            *) warn "Unknown option." ;;
+                        esac
+                    done ;;
                 p|prefs|prefer)
                     printf '\n'
                     printf "  ${C_BOLD}1)${C_RESET} Prefer whiptail (TUI)\n"
@@ -4879,6 +5281,11 @@ cmd_help() {
     printf "    %-36s %s\n" "termio [-v] agent add [alias]"  "Load alias key(s) into agent"
     printf "    %-36s %s\n" "termio [-v] agent rm  <alias>"  "Remove alias key from agent"
     printf "    %-36s %s\n" "termio [-v] agent clear"        "Remove all keys from agent"
+    printf "    %-36s %s\n" "termio [-v] bootstrap <alias>"  "Install snippet widget profile on alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap update <alias>" "Push updated snippets to alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap remove <alias>" "Remove profile from alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap list"    "List bootstrapped aliases"
+    printf "    %-36s %s\n" "termio [-v] connect <alias> --profile" "Ephemeral session with profile active"
     printf "    %-36s %s\n" "termio       version"           "Show version"
     printf "    %-36s %s\n" "termio       help|--help|-h"    "Show this help"
     printf '\n'
@@ -4907,6 +5314,7 @@ cmd_help() {
     printf "    • tunnel — named port-forward profiles, start/stop/status management\n"
     printf "    • agent — load/unload per-alias keys in ssh-agent\n"
     printf "    • Connection history tracked per alias (last seen in list/info)\n"
+    printf "    • bootstrap — deploy Ctrl+X s snippet widget (zsh ZLE / bash readline) to remote\n"
     printf "    • Tab completion for bash + zsh — source termio-completion\n"
     printf "    • Config: ~/.config/termio/  |  Keys: ~/.ssh/id_<type>_<alias>\n"
     printf '\n'
@@ -4950,6 +5358,7 @@ case "${1:-}" in
     tunnel)            shift; cmd_tunnel "$@" ;;
     agent)             cmd_agent  "${2:-}" "${3:-}" ;;
     backup)            cmd_backup "${2:-}" "${3:-}" ;;
+    bootstrap)         shift; cmd_bootstrap "$@" ;;
     pin)               cmd_pin    "${2:-}" ;;
     unpin)             cmd_unpin  "${2:-}" ;;
     open)              cmd_open   "${2:-}" ;;
