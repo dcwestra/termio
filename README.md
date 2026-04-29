@@ -25,6 +25,7 @@ Works as a full TUI (whiptail menus) or a plain CLI. One shell script, no compil
 - **Export / import** — portable plaintext format for moving aliases between machines
 - **Interactive TUI** via whiptail/newt, with automatic fallback to CLI prompts
 - **Tab completion** for bash and zsh — source `termio-completion`
+- **Bootstrap** — deploy a snippet widget (`Ctrl+X s`) to any remote host so your saved snippets are available as a fuzzy-searchable command palette in the remote shell (zsh ZLE + bash readline); persistent install or ephemeral `--profile` sessions
 - **Per-alias preferences** — auto agent-add and optional password storage per alias
 - **Verbose mode** — `-v` flag exposes all background operations
 
@@ -39,6 +40,7 @@ Works as a full TUI (whiptail menus) or a plain CLI. One shell script, no compil
 | `sshpass` | No | Non-interactive key copy on `add`; optional password auth |
 | `openssl` | No | Encrypted key sync |
 | `wakeonlan` or `python3` | No | Wake-on-LAN (`termio wake`) |
+| `fzf` *(on the remote host)* | No | Snippet widget (`termio bootstrap`) — offered for install if missing |
 
 ---
 
@@ -98,7 +100,8 @@ termio [-v] <command> [args]
 termio add                        # Guided wizard — alias, host, user, port, group, key type
 termio connect <alias>            # Connect to a saved alias
 termio connect <alias> --agent    # Connect and auto-load key into ssh-agent first
-termio connect <alias> --sshpass  # Connect using a prompted (or stored) password
+termio connect <alias> --sshpass   # Connect using a prompted (or stored) password
+termio connect <alias> --profile   # Connect with snippet widget active (ephemeral, no install)
 termio ls                         # List all aliases with group and last-connected time
 termio ls --group <name>          # Filter list to a specific group
 termio info <alias>               # Full details: host, key fingerprint, group, last seen
@@ -284,6 +287,29 @@ Compare your local aliases against the sync folder's export — useful when term
 termio diff                       # Show what's changed locally vs the last sync export
 ```
 
+### Bootstrap
+
+Bootstrap deploys a snippet widget to a remote host so your saved termio snippets are available as a fuzzy-searchable palette in the remote shell via `Ctrl+X s`. It installs a small `shell-init.sh` profile on the remote (using ZLE for zsh and readline bindings for bash) and pushes your current snippet list as a TSV file.
+
+```sh
+termio bootstrap <alias>             # Install profile on alias (persistent)
+termio bootstrap update <alias>      # Push updated snippets to an already-bootstrapped alias
+termio bootstrap remove <alias>      # Remove profile files from alias
+termio bootstrap list                # Show all bootstrapped aliases and install dates
+
+termio connect <alias> --profile     # Ephemeral session — profile injected for this session only,
+                                     # nothing written to the remote permanently
+```
+
+**First-connect auto-prompt** — enable with `termio prefer auto_bootstrap on` and termio will offer to bootstrap any alias that hasn't been set up yet.
+
+**Dependencies on the remote host:** the snippet widget uses `fzf`. If it is not present, termio offers three options:
+- Install via the remote host's package manager (`apt`, `dnf`, `pacman`, `brew`, etc.)
+- Install from source to `~/.fzf/bin` (no sudo required)
+- Skip — the widget will be installed but inactive until fzf is available
+
+The widget is also accessible from the interactive menu: **Bootstrap ▶** in the whiptail TUI, or `bs` in the plain CLI menu.
+
 ### Wake-on-LAN
 
 ```sh
@@ -313,6 +339,10 @@ termio -v <command>               # Verbose — show background operations
 ~/.config/termio/snippets            INI-style snippet storage
 ~/.config/termio/tunnels             INI-style tunnel definitions
 ~/.config/termio/tunnel-socks/       SSH control sockets for running tunnels
+
+# Remote host (after bootstrap install)
+~/.config/termio/shell-init.sh       Snippet widget profile (sourced by remote shell)
+~/.config/termio/snippets.tsv        Snippet list pushed from local machine (name\tcmd\tdesc)
 ```
 
 ### Sync folder layout (when configured)
