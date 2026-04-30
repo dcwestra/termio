@@ -732,9 +732,9 @@ _bootstrap_install() {
     info "Bootstrapping termio profile on ${C_BOLD}$_bia${C_RESET}…"
     printf '\n'
 
-    # Check / install dependencies
+    # Check / install dependencies (|| true: dep failures are advisory, not fatal)
     _fzf_path_prefix=""
-    _bootstrap_check_deps "$_bia"
+    _bootstrap_check_deps "$_bia" || true
 
     # Push profile script (prepend PATH fix if fzf was git-installed)
     {
@@ -744,17 +744,17 @@ _bootstrap_install() {
         'mkdir -p ~/.config/termio && cat > ~/.config/termio/shell-init.sh && chmod 600 ~/.config/termio/shell-init.sh' \
         || die "Failed to copy profile to $_bia"
     # Push snippet list
-    _bootstrap_push_snips "$_bia"
+    _bootstrap_push_snips "$_bia" || true
     # Add source guard to .zshrc and .bashrc (idempotent)
     ssh -F "$CONFIG_FILE" "$_bia" '
-        _sl="[ -f \"\$HOME/.config/termio/shell-init.sh\" ] && . \"\$HOME/.config/termio/shell-init.sh\""
+        _sl="[ -f \"$HOME/.config/termio/shell-init.sh\" ] && . \"$HOME/.config/termio/shell-init.sh\""
         for _sf in ~/.zshrc ~/.bashrc; do
             [ -f "$_sf" ] || continue
             grep -qF "termio/shell-init.sh" "$_sf" 2>/dev/null && continue
             printf "\n# termio profile\n%s\n" "$_sl" >> "$_sf"
             printf "  appended to %s\n" "$_sf"
         done
-    '
+    ' || true
     pref_set "bootstrap_$_bia" "$(date '+%Y-%m-%d')"
     success "Profile installed on $_bia — active from next login (or: source ~/.zshrc)"
     printf '\n'
