@@ -729,7 +729,7 @@ cmd_bootstrap() {
 
 _bootstrap_install() {
     _bia="$1"
-    info "Bootstrapping termio profile on ${C_BOLD}$_bia${C_RESET}…"
+    info "Installing snippet widget on ${C_BOLD}$_bia${C_RESET}…"
     printf '\n'
 
     # Check / install dependencies (|| true: dep failures are advisory, not fatal)
@@ -756,7 +756,7 @@ _bootstrap_install() {
         done
     ' || true
     pref_set "bootstrap_$_bia" "$(date '+%Y-%m-%d')"
-    success "Profile installed on $_bia — active from next login (or: source ~/.zshrc)"
+    success "Snippet widget installed on $_bia — active from next login (or: source ~/.zshrc)"
     printf '\n'
 }
 
@@ -768,7 +768,7 @@ _bootstrap_push_snips() {
 
 _bootstrap_remove() {
     _bra="$1"
-    info "Removing termio profile from ${C_BOLD}$_bra${C_RESET}…"
+    info "Removing snippet widget from ${C_BOLD}$_bra${C_RESET}…"
     ssh -F "$CONFIG_FILE" "$_bra" '
         rm -f ~/.config/termio/shell-init.sh ~/.config/termio/snippet-list.txt
         for _sf in ~/.zshrc ~/.bashrc; do
@@ -783,12 +783,12 @@ _bootstrap_remove() {
         done
     '
     pref_set "bootstrap_$_bra" ""
-    success "Profile removed from $_bra"
+    success "Snippet widget removed from $_bra"
     printf '\n'
 }
 
 _bootstrap_list() {
-    printf "\n  ${C_LBLUE}${C_BOLD}Bootstrapped aliases${C_RESET}\n\n"
+    printf "\n  ${C_LBLUE}${C_BOLD}Aliases with snippet widget installed${C_RESET}\n\n"
     _bfound=0
     awk '/^Host / && !/[*?]/ {print $2}' "$CONFIG_FILE" 2>/dev/null | \
     while IFS= read -r _ba; do
@@ -3630,7 +3630,7 @@ cmd_connect() {
     # Auto-bootstrap: if enabled and alias not yet bootstrapped, prompt once
     if [ "$(pref_get 'auto_bootstrap' '0')" = "1" ]; then
         if [ -z "$(pref_get "bootstrap_$_alias" "")" ]; then
-            printf "  ${C_YELLOW}⚡${C_RESET} No termio profile on %s — bootstrap now? [Y/n] " \
+            printf "  ${C_YELLOW}⚡${C_RESET} No snippet widget on %s — install now? [Y/n] " \
                 "$_alias"
             IFS= read -r _ab_ans
             case "${_ab_ans:-y}" in
@@ -4782,12 +4782,12 @@ _wt_bootstrap_menu() {
         _title=$(_wt_title)
         _bchoice=$(whiptail --title "$_title — Bootstrap" \
             --cancel-button "Back" \
-            --menu "Deploy shell profile + snippet widget to remote hosts:" "$TH" "$TW" 6 \
-            "install" "  Install profile on an alias" \
+            --menu "Manage snippet widget (Ctrl+X s) on remote hosts:" "$TH" "$TW" 6 \
+            "install" "  Install snippet widget on alias" \
             "connect" "  Connect with profile (ephemeral session)" \
-            "update"  "  Push updated snippets to alias" \
-            "remove"  "  Remove profile from alias" \
-            "list"    "  List bootstrapped aliases" \
+            "update"  "  Sync snippets to alias" \
+            "remove"  "  Remove snippet widget from alias" \
+            "list"    "  List aliases with snippet widget" \
             "prefs"   "  Bootstrap auto-prompt preference" \
             3>&1 1>&2 2>&3) || return 0
         case "$_bchoice" in
@@ -4868,7 +4868,7 @@ interactive_menu() {
                 "status"    "  Status dashboard — all connections" \
                 "run"       "  Run a one-off remote command" \
                 "copy"      "  Copy files to/from alias (sftp)" \
-                "bootstrap" "  Bootstrap ▶  — deploy snippet widget to remote hosts" \
+                "bootstrap" "  Bootstrap ▶  — install/sync snippet widget on remotes" \
                 "manage"    "  Manage ▶  (edit / rotate / audit / rm / export)" \
                 "snip"      "  Snippets ▶  — reusable remote commands" \
                 "tunnel"    "  Tunnels ▶  — named port-forward profiles" \
@@ -5185,11 +5185,11 @@ interactive_menu() {
                 bs|bootstrap)
                     while true; do
                         printf "\n  ${C_LBLUE}${C_BOLD}── Bootstrap ───────────────────────────────────${C_RESET}\n"
-                        printf "  ${C_BOLD}1)${C_RESET} Install profile on an alias\n"
+                        printf "  ${C_BOLD}1)${C_RESET} Install snippet widget on alias\n"
                         printf "  ${C_BOLD}2)${C_RESET} Connect with profile (ephemeral session)\n"
-                        printf "  ${C_BOLD}3)${C_RESET} Push updated snippets to alias\n"
-                        printf "  ${C_BOLD}4)${C_RESET} Remove profile from alias\n"
-                        printf "  ${C_BOLD}5)${C_RESET} List bootstrapped aliases\n"
+                        printf "  ${C_BOLD}3)${C_RESET} Sync snippets to alias\n"
+                        printf "  ${C_BOLD}4)${C_RESET} Remove snippet widget from alias\n"
+                        printf "  ${C_BOLD}5)${C_RESET} List aliases with snippet widget\n"
                         printf "  ${C_BOLD}6)${C_RESET} Enable auto-bootstrap prompt on connect\n"
                         printf "  ${C_BOLD}7)${C_RESET} Disable auto-bootstrap prompt\n"
                         printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
@@ -5286,10 +5286,10 @@ cmd_help() {
     printf "    %-36s %s\n" "termio [-v] agent add [alias]"  "Load alias key(s) into agent"
     printf "    %-36s %s\n" "termio [-v] agent rm  <alias>"  "Remove alias key from agent"
     printf "    %-36s %s\n" "termio [-v] agent clear"        "Remove all keys from agent"
-    printf "    %-36s %s\n" "termio [-v] bootstrap <alias>"  "Install snippet widget profile on alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap update <alias>" "Push updated snippets to alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap remove <alias>" "Remove profile from alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap list"    "List bootstrapped aliases"
+    printf "    %-36s %s\n" "termio [-v] bootstrap <alias>"  "Install snippet widget on alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap update <alias>" "Sync snippets to alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap remove <alias>" "Remove snippet widget from alias"
+    printf "    %-36s %s\n" "termio [-v] bootstrap list"    "List aliases with snippet widget"
     printf "    %-36s %s\n" "termio [-v] connect <alias> --profile" "Ephemeral session with profile active"
     printf "    %-36s %s\n" "termio       version"           "Show version"
     printf "    %-36s %s\n" "termio       help|--help|-h"    "Show this help"
