@@ -955,14 +955,20 @@ copy_key_to_remote() {
     _jopt=""; [ -n "$_jump" ] && _jopt="-o ProxyJump=$_jump"
     if command -v sshpass >/dev/null 2>&1 && [ -n "$_pass" ]; then
         _ckr_tmp=$(mktemp)
+        # Pass password via env var (avoids process-list exposure and handles all special chars).
+        # Force password auth so SSH agent keys don't exhaust MaxAuthTries before the password
+        # attempt, which causes "Too many authentication failures" on default server configs.
         # shellcheck disable=SC2086
-        sshpass -p "$_pass" ssh-copy-id \
+        SSHPASS="$_pass" sshpass -e ssh-copy-id \
             -i "${_kf}.pub" -p "$_p" \
             -o StrictHostKeyChecking=accept-new \
+            -o PubkeyAuthentication=no \
+            -o PreferredAuthentications=password \
             $_jopt "${_u}@${_h}" >"$_ckr_tmp" 2>&1
         _ckr_rc=$?
         grep -v '^$' <"$_ckr_tmp" || true
         rm -f "$_ckr_tmp"
+        unset SSHPASS
         return $_ckr_rc
     else
         [ -z "$_pass" ] \
@@ -971,6 +977,8 @@ copy_key_to_remote() {
         # shellcheck disable=SC2086
         ssh-copy-id -i "${_kf}.pub" -p "$_p" \
             -o StrictHostKeyChecking=accept-new \
+            -o PubkeyAuthentication=no \
+            -o PreferredAuthentications=password \
             $_jopt "${_u}@${_h}"
     fi
 }
@@ -2057,19 +2065,47 @@ _cmd_prefer_alias() {
                 success "WOL MAC set for \"$_pa\": $wm_norm"
                 printf "  Send WOL packet with: ${C_BOLD}termio wake $_pa${C_RESET}\n\n"
             fi ;;
+        audit_threshold|audit-threshold)
+            _global_thresh=$(pref_get "audit_threshold")
+            [ -z "$_global_thresh" ] && _global_thresh="90 (default)"
+            if [ -z "$_pv" ]; then
+                _cur=$(pref_get "audit_threshold_${_pa}")
+                printf '\n  Audit threshold for %s: %s  (global: %s)\n\n' \
+                    "$_pa" "${_cur:-inherited (${_global_thresh})}" "$_global_thresh"
+                printf "  ${C_BOLD}termio prefer %s audit_threshold <N>${C_RESET}    — set per-host threshold\n" "$_pa"
+                printf "  ${C_BOLD}termio prefer %s audit_threshold off${C_RESET}    — disable auditing for this host\n" "$_pa"
+                printf "  ${C_BOLD}termio prefer %s audit_threshold clear${C_RESET}  — remove override (inherit global)\n\n" "$_pa"
+            elif [ "$_pv" = "clear" ] || [ "$_pv" = "reset" ]; then
+                pref_set "audit_threshold_${_pa}" ""
+                success "Per-host audit threshold cleared for ${C_BOLD}$_pa${C_RESET} — inheriting global."
+            elif [ "$_pv" = "off" ] || [ "$_pv" = "never" ] || [ "$_pv" = "disable" ]; then
+                warn "⚠  Key rotation auditing disabled for ${C_BOLD}$_pa${C_RESET}."
+                printf "  Re-enable with: ${C_BOLD}termio prefer %s audit_threshold clear${C_RESET}\n\n" "$_pa"
+                pref_set "audit_threshold_${_pa}" "off"
+            else
+                case "$_pv" in
+                    *[!0-9]*|0) die "audit_threshold must be a positive integer, 'off', or 'clear'" ;;
+                esac
+                pref_set "audit_threshold_${_pa}" "$_pv"
+                success "Audit threshold for ${C_BOLD}${_pa}${C_RESET} set to ${C_BOLD}${_pv} days${C_RESET}."
+            fi ;;
         "")
             _aa=$(pref_get "auto_agent_$_pa")
             _sp=$(pref_get "sshpass_$_pa")
             _wm=$(pref_get "wol_mac_$_pa")
+            _at=$(pref_get "audit_threshold_$_pa")
+            _global_thresh=$(pref_get "audit_threshold"); [ -z "$_global_thresh" ] && _global_thresh=90
             printf '\n  Per-alias preferences for: %s\n\n' "$_pa"
-            printf "    auto_agent:  %s\n" "${_aa:-off}"
-            printf "    sshpass:     %s\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
-            printf "    wol_mac:     %s\n\n" "${_wm:-not set}"
+            printf "    auto_agent:       %s\n" "${_aa:-off}"
+            printf "    sshpass:          %s\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
+            printf "    wol_mac:          %s\n" "${_wm:-not set}"
+            printf "    audit_threshold:  %s\n\n" "${_at:-inherited (${_global_thresh} days)}"
             printf "  ${C_BOLD}termio prefer %s auto_agent on|off${C_RESET}\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s sshpass${C_RESET}       — store password\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET} — remove stored password\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}     — set Wake-on-LAN MAC\n\n" "$_pa" ;;
-        *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass, wol)" ;;
+            printf "  ${C_BOLD}termio prefer %s sshpass${C_RESET}                   — store password\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET}             — remove stored password\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}                 — set Wake-on-LAN MAC\n" "$_pa"
+            printf "  ${C_BOLD}termio prefer %s audit_threshold <N>${C_RESET}       — per-host key rotation threshold\n\n" "$_pa" ;;
+        *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass, wol, audit_threshold)" ;;
     esac
 }
 
@@ -2091,12 +2127,14 @@ cmd_prefer() {
         _ktype=$(pref_get "key_type")
         printf "  Audit threshold:       %s days\n" "${_thresh:-90 (default)}"
         printf "  Default key type:      %s\n\n" "${_ktype:-ed25519 (default)}"
-        printf "  ${C_BOLD}termio prefer whiptail${C_RESET}                    — use TUI dialogs\n"
-        printf "  ${C_BOLD}termio prefer cli${C_RESET}                         — use plain terminal\n"
-        printf "  ${C_BOLD}termio prefer key_type <type>${C_RESET}             — default key type\n"
-        printf "  ${C_BOLD}termio prefer audit_threshold <N>${C_RESET}         — key rotation threshold\n"
-        printf "  ${C_BOLD}termio prefer <alias> auto_agent on|off${C_RESET}   — auto-load key to agent\n"
-        printf "  ${C_BOLD}termio prefer <alias> sshpass${C_RESET}             — store password for alias\n\n"
+        printf "  ${C_BOLD}termio prefer whiptail${C_RESET}                              — use TUI dialogs\n"
+        printf "  ${C_BOLD}termio prefer cli${C_RESET}                                  — use plain terminal\n"
+        printf "  ${C_BOLD}termio prefer key_type <type>${C_RESET}                      — default key type\n"
+        printf "  ${C_BOLD}termio prefer audit_threshold <N>${C_RESET}                  — key rotation threshold (global)\n"
+        printf "  ${C_BOLD}termio prefer <alias> audit_threshold <N>${C_RESET}          — per-host key rotation threshold\n"
+        printf "  ${C_BOLD}termio prefer <alias> audit_threshold clear${C_RESET}        — remove per-host override\n"
+        printf "  ${C_BOLD}termio prefer <alias> auto_agent on|off${C_RESET}            — auto-load key to agent\n"
+        printf "  ${C_BOLD}termio prefer <alias> sshpass${C_RESET}                      — store password for alias\n\n"
         return 0
     fi
 
@@ -2149,14 +2187,22 @@ cmd_prefer() {
         audit_threshold|audit-threshold)
             if [ -z "$_val" ]; then
                 _cur=$(pref_get "audit_threshold")
-                printf '\n  Audit threshold: %s days\n\n' "${_cur:-90 (default)}"
+                printf '\n  Audit threshold: %s\n\n' "${_cur:-90 days (default)}"
             else
                 case "$_val" in
-                    *[!0-9]*) die "audit_threshold must be a positive integer" ;;
+                    off|never|disable|disabled)
+                        warn "⚠  Disabling key rotation auditing. SSH keys will not be flagged for age."
+                        printf "  Re-enable with: ${C_BOLD}termio prefer audit_threshold 90${C_RESET}\n\n"
+                        pref_set "audit_threshold" "off" ;;
+                    reset|default)
+                        pref_set "audit_threshold" ""
+                        success "Audit threshold reset to default (90 days)." ;;
+                    *[!0-9]*|0) die "audit_threshold must be a positive integer, 'off', or 'reset'" ;;
+                    *)
+                        pref_set "audit_threshold" "$_val"
+                        success "Audit threshold set to ${C_BOLD}${_val} days${C_RESET}."
+                        printf "  Run ${C_BOLD}termio audit${C_RESET} to check all keys.\n\n" ;;
                 esac
-                pref_set "audit_threshold" "$_val"
-                success "Audit threshold set to ${C_BOLD}${_val} days${C_RESET}."
-                printf "  Run ${C_BOLD}termio audit${C_RESET} to check all keys.\n\n"
             fi ;;
         *)
             if alias_exists "$_mode" 2>/dev/null; then
@@ -3321,13 +3367,17 @@ _EOWST
 wt_audit() {
     _threshold=$(pref_get "audit_threshold")
     [ -z "$_threshold" ] && _threshold=90
+    if [ "$_threshold" = "off" ]; then
+        wt_msg "Key rotation auditing is globally disabled.\n\nRe-enable via Preferences → Key rotation threshold."
+        return 0
+    fi
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
         wt_msg "No aliases configured.\n\nAdd one with: termio add"
         return 0
     fi
     _txt=$(
-        printf 'Key Age Audit  (threshold: %s days)\n' "$_threshold"
+        printf 'Key Age Audit  (global threshold: %s days)\n' "$_threshold"
         printf '%.0s─' \
             1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
             21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
@@ -3335,17 +3385,25 @@ wt_audit() {
         printf '\n\n'
         printf '%s\n' "$_aliases" | while IFS= read -r _a; do
             [ -z "$_a" ] && continue
+            _alias_thresh=$(pref_get "audit_threshold_${_a}")
+            [ -z "$_alias_thresh" ] && _alias_thresh=$_threshold
+            if [ "$_alias_thresh" = "off" ]; then
+                printf '  —  %-18s auditing disabled\n' "$_a"
+                continue
+            fi
+            _thresh_note=""
+            [ "$_alias_thresh" != "$_threshold" ] && _thresh_note=" [override: ${_alias_thresh}d]"
             _key=$(get_field "$_a" "IdentityFile")
             if [ -z "$_key" ] || [ ! -f "$_key" ]; then
-                printf '  ⚠  %-18s key file not found\n' "$_a"
+                printf '  ⚠  %-18s key file not found%s\n' "$_a" "$_thresh_note"
                 continue
             fi
             _kname=$(basename "$_key")
-            if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+            if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_alias_thresh}" \
                     2>/dev/null | grep -q .; then
-                printf '  ⚠  %-18s key >%s days old\n' "$_a" "$_threshold"
+                printf '  ⚠  %-18s key >%s days old%s\n' "$_a" "$_alias_thresh" "$_thresh_note"
             else
-                printf '  ✔  %-18s key is current\n' "$_a"
+                printf '  ✔  %-18s key is current%s\n' "$_a" "$_thresh_note"
             fi
         done
     )
@@ -4007,34 +4065,48 @@ _EOST2
 cmd_audit() {
     _threshold=$(pref_get "audit_threshold")
     [ -z "$_threshold" ] && _threshold=90
+    if [ "$_threshold" = "off" ]; then
+        info "Key rotation auditing is globally disabled."
+        printf "  Re-enable: ${C_BOLD}termio prefer audit_threshold 90${C_RESET}\n\n"
+        return 0
+    fi
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
         printf '\n  No aliases configured.\n\n'; return 0
     fi
     printf '\n'
-    printf "${C_CYAN}${C_BOLD}  Key Age Audit${C_RESET}  (threshold: %s days)\n" "$_threshold"
+    printf "${C_CYAN}${C_BOLD}  Key Age Audit${C_RESET}  (global threshold: %s days)\n" "$_threshold"
     printf '  '; printf '%.0s─' \
         1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
         21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
         41 42 43 44 45 46 2>/dev/null; printf '\n\n'
-    _flagged=0; _ok=0
+    _flagged=0; _ok=0; _skipped=0
     while IFS= read -r _a; do
         [ -z "$_a" ] && continue
+        _alias_thresh=$(pref_get "audit_threshold_${_a}")
+        [ -z "$_alias_thresh" ] && _alias_thresh=$_threshold
+        if [ "$_alias_thresh" = "off" ]; then
+            printf "  ${C_DIM}—  %-18s auditing disabled${C_RESET}\n" "$_a"
+            _skipped=$(( _skipped + 1 ))
+            continue
+        fi
+        _thresh_note=""
+        [ "$_alias_thresh" != "$_threshold" ] && _thresh_note="  ${C_DIM}[override: ${_alias_thresh}d]${C_RESET}"
         _key=$(get_field "$_a" "IdentityFile")
         if [ -z "$_key" ] || [ ! -f "$_key" ]; then
-            printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key file not found\n" "$_a"
+            printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key file not found%b\n" "$_a" "$_thresh_note"
             _flagged=$(( _flagged + 1 ))
             continue
         fi
         _kname=$(basename "$_key")
-        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_alias_thresh}" \
                 2>/dev/null | grep -q .; then
             printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key >%s days old — " \
-                "$_a" "$_threshold"
-            printf "rotate: ${C_DIM}termio rotate %s${C_RESET}\n" "$_a"
+                "$_a" "$_alias_thresh"
+            printf "rotate: ${C_DIM}termio rotate %s${C_RESET}%b\n" "$_a" "$_thresh_note"
             _flagged=$(( _flagged + 1 ))
         else
-            printf "  ${C_GREEN}✔${C_RESET}  ${C_BOLD}%-18s${C_RESET} key is current\n" "$_a"
+            printf "  ${C_GREEN}✔${C_RESET}  ${C_BOLD}%-18s${C_RESET} key is current%b\n" "$_a" "$_thresh_note"
             _ok=$(( _ok + 1 ))
         fi
     done <<_EOAUDIT
@@ -4042,10 +4114,11 @@ $(printf '%s\n' "$_aliases")
 _EOAUDIT
     printf '\n'
     if [ "$_flagged" -eq 0 ]; then
-        success "All ${_ok} key(s) within the ${_threshold}-day rotation window."
+        success "All ${_ok} key(s) within the rotation window.$([ "$_skipped" -gt 0 ] && printf '  (%d skipped)' "$_skipped")"
     else
-        warn "${_flagged} key(s) flagged for rotation  (${_ok} current)"
-        printf "  Set threshold: ${C_BOLD}termio prefer audit_threshold <days>${C_RESET}\n"
+        warn "${_flagged} key(s) flagged for rotation  (${_ok} current$([ "$_skipped" -gt 0 ] && printf ', %d skipped' "$_skipped"))"
+        printf "  Set global threshold: ${C_BOLD}termio prefer audit_threshold <days>${C_RESET}\n"
+        printf "  Set per-host:         ${C_BOLD}termio prefer <alias> audit_threshold <days>${C_RESET}\n"
     fi
     printf '\n'
 }
@@ -4598,8 +4671,28 @@ _wt_sync_menu() {
 
 # Whiptail prefs submenu
 _wt_prefs_menu() {
+    while true; do
+        _cur_ui=$(pref_get "ui")
+        _cur_thresh=$(pref_get "audit_threshold"); [ -z "$_cur_thresh" ] && _cur_thresh=90
+        _cur_ktype=$(pref_get "key_type"); [ -z "$_cur_ktype" ] && _cur_ktype=ed25519
+        _pc=$(whiptail --title "termio — Preferences" \
+            --cancel-button "Back" \
+            --menu "" 13 64 3 \
+            "ui"        "  UI mode: ${_cur_ui:-auto-detect}" \
+            "threshold" "  Key rotation threshold: ${_cur_thresh} days" \
+            "key_type"  "  Default key type: ${_cur_ktype}" \
+            3>&1 1>&2 2>&3) || return 0
+        case "$_pc" in
+            ui)        _wt_prefs_ui_menu ;;
+            threshold) _wt_prefs_threshold ;;
+            key_type)  _wt_prefs_keytype ;;
+        esac
+    done
+}
+
+_wt_prefs_ui_menu() {
     _cur_pref=$(pref_get "ui")
-    _pc=$(whiptail --title "termio — UI Preference" \
+    _pc=$(whiptail --title "termio — UI Mode" \
         --cancel-button "Back" \
         --menu "Current: ${_cur_pref:-auto-detect}  |  whiptail installed: $([ "$_WHIPTAIL_INSTALLED" -eq 1 ] && printf 'yes' || printf 'no')" \
         12 64 3 \
@@ -4612,6 +4705,50 @@ _wt_prefs_menu() {
         cli)      cmd_prefer cli ;;
         auto)     pref_set "ui" ""; success "Preference cleared — auto-detect." ;;
     esac
+}
+
+_wt_prefs_threshold() {
+    _cur=$(pref_get "audit_threshold"); [ -z "$_cur" ] && _cur=90
+    _pt=$(whiptail --title "termio — Key Rotation Threshold" \
+        --cancel-button "Back" \
+        --menu "Current: ${_cur}" \
+        12 64 3 \
+        "days"  "  Set threshold in days (current: ${_cur})" \
+        "off"   "  Disable key rotation auditing" \
+        "reset" "  Reset to default (90 days)" \
+        3>&1 1>&2 2>&3) || return 0
+    case "$_pt" in
+        days)
+            wt_input "Key rotation threshold in days" "$_cur"
+            [ -z "$_PROMPT_RESULT" ] && return 0
+            case "$_PROMPT_RESULT" in
+                *[!0-9]*|0) wt_msg "Must be a positive integer greater than 0."; return 1 ;;
+            esac
+            pref_set "audit_threshold" "$_PROMPT_RESULT"
+            wt_msg "Threshold set to ${_PROMPT_RESULT} days." ;;
+        off)
+            if wt_yesno "⚠  Disable key rotation auditing?\n\nYou will no longer be warned when SSH keys are old.\nThis is not recommended for security-sensitive systems."; then
+                pref_set "audit_threshold" "off"
+                wt_msg "Key rotation auditing disabled."
+            fi ;;
+        reset)
+            pref_set "audit_threshold" ""
+            wt_msg "Threshold reset to default (90 days)." ;;
+    esac
+}
+
+_wt_prefs_keytype() {
+    _cur=$(pref_get "key_type"); [ -z "$_cur" ] && _cur=ed25519
+    _kt=$(whiptail --title "termio — Default Key Type" \
+        --cancel-button "Back" \
+        --menu "Current: $_cur" \
+        11 48 3 \
+        "ed25519" "  Modern, fast, recommended" \
+        "rsa"     "  Widest compatibility (4096-bit)" \
+        "ecdsa"   "  NIST curve, good compatibility" \
+        3>&1 1>&2 2>&3) || return 0
+    pref_set "key_type" "$_kt"
+    success "Default key type set to ${C_BOLD}${_kt}${C_RESET}."
 }
 
 # Whiptail help screen
@@ -4845,17 +4982,21 @@ _wt_bootstrap_menu() {
 _startup_audit_warn() {
     _threshold=$(pref_get "audit_threshold")
     [ -z "$_threshold" ] && _threshold=90
+    [ "$_threshold" = "off" ] && return 0
     _aliases=$(list_aliases)
     [ -z "$_aliases" ] && return 0
     _flagged=0
     while IFS= read -r _a; do
         [ -z "$_a" ] && continue
+        _alias_thresh=$(pref_get "audit_threshold_${_a}")
+        [ -z "$_alias_thresh" ] && _alias_thresh=$_threshold
+        [ "$_alias_thresh" = "off" ] && continue
         _key=$(get_field "$_a" "IdentityFile")
         if [ -z "$_key" ] || [ ! -f "$_key" ]; then
             _flagged=$(( _flagged + 1 )); continue
         fi
         _kname=$(basename "$_key")
-        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_threshold}" \
+        if find "$SSH_DIR" -maxdepth 1 -name "$_kname" -mtime "+${_alias_thresh}" \
                 2>/dev/null | grep -q .; then
             _flagged=$(( _flagged + 1 ))
         fi
