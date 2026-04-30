@@ -84,6 +84,8 @@ sudo cp termio-completion /etc/bash_completion.d/termio
 
 Or let termio install it: `termio prefer whiptail`
 
+<img width="1207" height="876" alt="Screenshot_20260430_114144" src="https://github.com/user-attachments/assets/7e06156d-26bb-4d23-9aaa-beda666444ab" />
+
 ---
 
 ## Usage
