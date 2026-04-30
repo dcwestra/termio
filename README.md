@@ -4,6 +4,8 @@ A terminal-native SSH alias and connection manager for Linux and macOS. A lightw
 
 Works as a full TUI (whiptail menus) or a plain CLI. One shell script, no compiled dependencies.
 
+<img width="1207" height="876" alt="Screenshot_20260430_114144" src="https://github.com/user-attachments/assets/7e06156d-26bb-4d23-9aaa-beda666444ab" />
+
 ---
 
 ## Features
@@ -83,8 +85,6 @@ sudo cp termio-completion /etc/bash_completion.d/termio
 | macOS | `brew install newt` |
 
 Or let termio install it: `termio prefer whiptail`
-
-<img width="1207" height="876" alt="Screenshot_20260430_114144" src="https://github.com/user-attachments/assets/7e06156d-26bb-4d23-9aaa-beda666444ab" />
 
 ---
 
