@@ -954,11 +954,16 @@ copy_key_to_remote() {
     _kf="$1"; _u="$2"; _h="$3"; _p="$4"; _pass="$5"; _jump="$6"
     _jopt=""; [ -n "$_jump" ] && _jopt="-o ProxyJump=$_jump"
     if command -v sshpass >/dev/null 2>&1 && [ -n "$_pass" ]; then
+        _ckr_tmp=$(mktemp)
         # shellcheck disable=SC2086
         sshpass -p "$_pass" ssh-copy-id \
             -i "${_kf}.pub" -p "$_p" \
             -o StrictHostKeyChecking=accept-new \
-            $_jopt "${_u}@${_h}" 2>&1 | grep -v '^$' || true
+            $_jopt "${_u}@${_h}" >"$_ckr_tmp" 2>&1
+        _ckr_rc=$?
+        grep -v '^$' <"$_ckr_tmp" || true
+        rm -f "$_ckr_tmp"
+        return $_ckr_rc
     else
         [ -z "$_pass" ] \
             && warn "No password — ssh-copy-id will prompt you." \
@@ -1239,10 +1244,14 @@ _TTEOF
     fi
 
     info "Copying public key to ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PORT} ..."
-    copy_key_to_remote "$KEY_FILE" "$REMOTE_USER" "$REMOTE_HOST" \
-        "$REMOTE_PORT" "$REMOTE_PASS" "$JUMP_HOST"
-    unset REMOTE_PASS
-    success "Public key copied. Password cleared from memory."
+    if copy_key_to_remote "$KEY_FILE" "$REMOTE_USER" "$REMOTE_HOST" \
+            "$REMOTE_PORT" "$REMOTE_PASS" "$JUMP_HOST"; then
+        unset REMOTE_PASS
+        success "Public key copied. Password cleared from memory."
+    else
+        unset REMOTE_PASS
+        die "Key copy failed — check the connection and try again."
+    fi
 
     write_config_block "$ALIAS" "$REMOTE_HOST" "$REMOTE_USER" "$REMOTE_PORT" \
         "$KEY_FILE" "$JUMP_HOST" "$NOTE" "$ADV_ALIVE" "$ADV_FWDAGENT" "$ADV_LOCALFWD" "$GROUP"
@@ -1651,8 +1660,11 @@ cmd_clone() {
     REMOTE_PASS="$_PROMPT_RESULT"
     if [ -n "$REMOTE_PASS" ]; then
         info "Copying public key to ${_nu}@${_nh}:${_np} ..."
-        copy_key_to_remote "$KEY_FILE" "$_nu" "$_nh" "$_np" "$REMOTE_PASS" "$_cj"
-        success "Public key copied."
+        if copy_key_to_remote "$KEY_FILE" "$_nu" "$_nh" "$_np" "$REMOTE_PASS" "$_cj"; then
+            success "Public key copied."
+        else
+            warn "Key copy failed — run: ssh-copy-id -i ${KEY_FILE}.pub ${_nu}@${_nh}"
+        fi
     else
         info "Skipping key copy — run: ssh-copy-id -i ${KEY_FILE}.pub ${_nu}@${_nh}"
     fi
@@ -1837,9 +1849,13 @@ cmd_rotate() {
     success "New key generated."
 
     info "Copying new key to remote ..."
-    copy_key_to_remote "$_new_key" "$_user" "$_host" "$_port" "$_pass" "$_jump"
-    unset _pass
-    success "New key copied. Password cleared."
+    if copy_key_to_remote "$_new_key" "$_user" "$_host" "$_port" "$_pass" "$_jump"; then
+        unset _pass
+        success "New key copied. Password cleared."
+    else
+        unset _pass
+        die "Key copy failed — rotation aborted. Old key still active."
+    fi
 
     info "Removing old key from remote authorized_keys ..."
     _old_pub=$(cat "${_old_key}.pub" 2>/dev/null || printf '')
@@ -1937,9 +1953,13 @@ cmd_import() {
         fi
         wt_password "Password for ${_cur_user}@${_cur_host}"
         _pass="$_PROMPT_RESULT"
-        copy_key_to_remote "$_key" "$_cur_user" "$_cur_host" \
-            "$_cur_port" "$_pass" "$_cur_jump"
-        unset _pass; success "Key copied."
+        if copy_key_to_remote "$_key" "$_cur_user" "$_cur_host" \
+                "$_cur_port" "$_pass" "$_cur_jump"; then
+            success "Key copied."
+        else
+            warn "Key copy failed — run: ssh-copy-id -i ${_key}.pub ${_cur_user}@${_cur_host}"
+        fi
+        unset _pass
         write_config_block "$_cur_name" "$_cur_host" "$_cur_user" "$_cur_port" \
             "$_key" "$_cur_jump" "$_cur_note" "$_cur_alive" "$_cur_fwda" "$_cur_lfwd" "$_cur_grp"
         success "\"$_cur_name\" imported."; printf '\n'
