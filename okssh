@@ -3041,11 +3041,14 @@ cmd_snip_run() {
     [ -z "$_name" ] && die "Usage: okssh snip run <name> [--group <tag>] [--parallel]"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
     shift
-    _run_group=""; _run_parallel=0
+    _run_group=""; _run_parallel=0; _cli_targets=""
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --group|-g)    shift; _run_group="${1:-}" ;;
             --parallel|-p) _run_parallel=1 ;;
+            --*)           ;;
+            *)             _cli_targets="${_cli_targets:+$_cli_targets
+}$1" ;;
         esac
         shift
     done
@@ -3075,7 +3078,9 @@ cmd_snip_run() {
 
     # ── Target selection ──────────────────────────────────────────────────────
 
-    if [ "$HAS_WHIPTAIL" -eq 1 ]; then
+    if [ -n "$_cli_targets" ]; then
+        _targets="$_cli_targets"
+    elif [ "$HAS_WHIPTAIL" -eq 1 ]; then
         set --
         while IFS= read -r _a; do
             [ -z "$_a" ] && continue
