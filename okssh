@@ -755,7 +755,9 @@ cmd_bootstrap() {
         --update|-u|update)
             [ -z "$_bal" ] && die "Usage: okssh bootstrap update <alias>"
             alias_exists "$_bal" || die "Alias '$_bal' not found"
-            _bootstrap_push_snips "$_bal" && success "Snippets synced to $_bal"; return 0 ;;
+            _bootstrap_push_snips "$_bal" || die "Failed to push snippets to $_bal"
+            _bootstrap_upgrade_profile "$_bal"
+            success "Bootstrap updated on $_bal"; return 0 ;;
         "")
             die "Usage: okssh bootstrap <alias> | list | update <alias> | remove <alias>" ;;
         *)
@@ -799,10 +801,37 @@ _bootstrap_install() {
     printf '\n'
 }
 
+_bootstrap_upgrade_profile() {
+    _bup_a="$1"
+    # Push current shell-init.sh (idempotent for fresh installs; migrates termio→okssh on old ones)
+    _okssh_profile_content | ssh -F "$CONFIG_FILE" "$_bup_a" \
+        'mkdir -p ~/.config/okssh && cat > ~/.config/okssh/shell-init.sh && chmod 600 ~/.config/okssh/shell-init.sh' \
+        || { warn "Could not update shell-init.sh on $_bup_a"; return 1; }
+    # Migrate shell config files from termio → okssh source line (idempotent)
+    ssh -F "$CONFIG_FILE" "$_bup_a" '
+        _sl="[ -f \"$HOME/.config/okssh/shell-init.sh\" ] && . \"$HOME/.config/okssh/shell-init.sh\""
+        for _sf in ~/.zshrc ~/.bashrc; do
+            [ -f "$_sf" ] || continue
+            grep -qF "okssh/shell-init.sh" "$_sf" 2>/dev/null && continue
+            # Remove old termio source block if present
+            sed -i "/^# termio profile$/d" "$_sf" 2>/dev/null || \
+                sed -i "" "/^# termio profile$/d" "$_sf" 2>/dev/null || true
+            sed -i "/termio\/shell-init\.sh/d" "$_sf" 2>/dev/null || \
+                sed -i "" "/termio\/shell-init\.sh/d" "$_sf" 2>/dev/null || true
+            printf "\n# okssh profile\n%s\n" "$_sl" >> "$_sf"
+            printf "  migrated %s\n" "$_sf"
+        done
+    ' || true
+}
+
 _bootstrap_push_snips() {
     _bpa="$1"
-    _okssh_snip_list_content | ssh -F "$CONFIG_FILE" "$_bpa" \
-        'mkdir -p ~/.config/okssh && cat > ~/.config/okssh/snippet-list.txt'
+    _okssh_snip_list_content | ssh -F "$CONFIG_FILE" "$_bpa" '
+        mkdir -p "$HOME/.config/okssh"
+        tee "$HOME/.config/okssh/snippet-list.txt" > /dev/null
+        [ -d "$HOME/.config/termio" ] && \
+            cp "$HOME/.config/okssh/snippet-list.txt" "$HOME/.config/termio/snippet-list.txt" 2>/dev/null || true
+    '
 }
 
 _bootstrap_remove() {
