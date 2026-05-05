@@ -104,6 +104,27 @@ if [ -f "$PREF_FILE" ]; then
     unset _old_sync _new_sync
 fi
 
+_snip_migrate_file="$CONF_DIR/snippets"
+if [ -f "$_snip_migrate_file" ] && grep -q '^\[snippet\]' "$_snip_migrate_file" 2>/dev/null; then
+    awk '
+        /^\[snippet\]/ { in_s=1; sn=""; sd=""; sc=""; ss=""; sk=""; next }
+        in_s && /^name=/     { sn=substr($0,6); next }
+        in_s && /^desc=/     { sd=substr($0,6); next }
+        in_s && /^cmd=/      { sc=substr($0,5); next }
+        in_s && /^use_sudo=/ { ss=substr($0,10); next }
+        in_s && /^created=/  { sk=substr($0,9); next }
+        in_s && /^$/ {
+            if (sn != "") printf "[%s]\ndescription=%s\ncommand=%s\nuse_sudo=%s\ncreated=%s\n\n", sn, sd, sc, ss, sk
+            in_s=0; next
+        }
+        !in_s { print }
+        END { if (in_s && sn != "") printf "[%s]\ndescription=%s\ncommand=%s\nuse_sudo=%s\ncreated=%s\n\n", sn, sd, sc, ss, sk }
+    ' "$_snip_migrate_file" > "${_snip_migrate_file}.tmp" \
+        && mv "${_snip_migrate_file}.tmp" "$_snip_migrate_file"
+    printf "Migrated snippets to new format\n"
+fi
+unset _snip_migrate_file
+
 # ── Colours ───────────────────────────────────────────────────────────────────
 
 # Whiptail/newt color theme — dark background, cyan accents, matches CLI palette
@@ -716,8 +737,8 @@ _okssh_snip_list_content() {
     [ -z "$_tsnames" ] && return 0
     printf '%s\n' "$_tsnames" | while IFS= read -r _tsn; do
         [ -z "$_tsn" ] && continue
-        _tsc=$(snip_get "$_tsn" "cmd")
-        _tsd=$(snip_get "$_tsn" "desc")
+        _tsc=$(snip_get "$_tsn" "command")
+        _tsd=$(snip_get "$_tsn" "description")
         printf '%s\t%s\t%s\n' "$_tsn" "$_tsc" "$_tsd"
     done
 }
@@ -2841,17 +2862,16 @@ _snip_init() { mkdir -p "$CONF_DIR"; touch "$SNIPPET_FILE"; }
 
 snip_list_names() {
     [ -f "$SNIPPET_FILE" ] || return 0
-    awk '/^\[snippet\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
+    awk '/^\[[^]]+\]/ { print substr($0,2,length($0)-2) }' \
         "$SNIPPET_FILE" 2>/dev/null || true
 }
 
 # snip_get <name> <field>
 snip_get() {
     [ -f "$SNIPPET_FILE" ] || { printf ''; return; }
-    awk -v tgt="$1" -v fld="$2" '
-        /^\[snippet\]/ { in_s=0; matched=0 }
-        /^name=/ { if (substr($0,6)==tgt) matched=1 }
-        matched && $0 ~ "^"fld"=" { print substr($0, length(fld)+2); exit }
+    awk -v tgt="[$1]" -v fld="$2" '
+        /^\[/ { in_s = ($0 == tgt) }
+        in_s && $0 ~ "^"fld"=" { print substr($0, length(fld)+2); exit }
     ' "$SNIPPET_FILE"
 }
 
@@ -2859,12 +2879,9 @@ snip_exists() { snip_list_names | grep -qx "$1" 2>/dev/null; }
 
 snip_remove_block() {
     [ -f "$SNIPPET_FILE" ] || return 0
-    awk -v tgt="$1" '
-        /^\[snippet\]/ { buf=""; skip=0 }
-        { buf = buf $0 "\n" }
-        /^name=/ && substr($0,6)==tgt { skip=1 }
-        /^$/ { if (!skip) printf "%s", buf; buf=""; skip=0 }
-        END  { if (!skip && buf!="") printf "%s", buf }
+    awk -v hdr="[$1]" '
+        /^\[/ { skip = ($0 == hdr) }
+        !skip { print }
     ' "$SNIPPET_FILE" > "${SNIPPET_FILE}.tmp" \
         && mv "${SNIPPET_FILE}.tmp" "$SNIPPET_FILE"
     vlog "snip_remove_block: $1"
@@ -2873,12 +2890,11 @@ snip_remove_block() {
 # snip_write <name> <desc> <cmd> <use_sudo>
 snip_write() {
     _snip_init
-    {   printf '\n[snippet]\n'
-        printf 'name=%s\n'     "$1"
-        printf 'desc=%s\n'     "$2"
-        printf 'cmd=%s\n'      "$3"
-        printf 'use_sudo=%s\n' "$4"
-        printf 'created=%s\n'  "$(date '+%Y-%m-%d %H:%M')"
+    {   printf '[%s]\n'           "$1"
+        printf 'description=%s\n' "$2"
+        printf 'command=%s\n'     "$3"
+        printf 'use_sudo=%s\n'    "$4"
+        printf 'created=%s\n'     "$(date '+%Y-%m-%d %H:%M')"
         printf '\n'
     } >> "$SNIPPET_FILE"
     vlog "snip_write: $1"
@@ -2910,7 +2926,7 @@ cmd_snip_list() {
         2>/dev/null; printf '\n'
     printf '%s\n' "$_names" | while IFS= read -r _n; do
         [ -z "$_n" ] && continue
-        _d=$(snip_get "$_n" "desc")
+        _d=$(snip_get "$_n" "description")
         _s=$(snip_get "$_n" "use_sudo")
         if [ "$_s" = "yes" ]; then _sf_col="${C_YELLOW}"; _sf_val="yes"
         else _sf_col="${C_DIM}"; _sf_val="no"; fi
@@ -2925,8 +2941,8 @@ cmd_snip_info() {
     _name="$1"
     [ -z "$_name" ] && die "Usage: okssh snip info <name>"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
-    _desc=$(snip_get "$_name" "desc")
-    _cmd=$(snip_get  "$_name" "cmd")
+    _desc=$(snip_get "$_name" "description")
+    _cmd=$(snip_get  "$_name" "command")
     _sudo=$(snip_get "$_name" "use_sudo")
     _cre=$(snip_get  "$_name" "created")
     printf '\n'
@@ -2986,8 +3002,8 @@ cmd_snip_edit() {
     _name="$1"
     [ -z "$_name" ] && die "Usage: okssh snip edit <name>"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
-    _cd=$(snip_get "$_name" "desc")
-    _cc=$(snip_get "$_name" "cmd")
+    _cd=$(snip_get "$_name" "description")
+    _cc=$(snip_get "$_name" "command")
     _cs=$(snip_get "$_name" "use_sudo")
     info "Editing snippet: ${C_BOLD}$_name${C_RESET} — blank = keep current"
     printf '\n'
@@ -3034,8 +3050,8 @@ cmd_snip_run() {
         shift
     done
 
-    _rcmd=$(snip_get  "$_name" "cmd")
-    _rdesc=$(snip_get "$_name" "desc")
+    _rcmd=$(snip_get  "$_name" "command")
+    _rdesc=$(snip_get "$_name" "description")
     _rsudo=$(snip_get "$_name" "use_sudo")
 
     _aliases=$(list_aliases)
@@ -3225,7 +3241,7 @@ wt_pick_snippet() {
     set --
     while IFS= read -r _n; do
         [ -z "$_n" ] && continue
-        _d=$(snip_get "$_n" "desc")
+        _d=$(snip_get "$_n" "description")
         set -- "$@" "$_n" "${_d:-no description}"
     done <<_EONS
 $(printf '%s\n' "$_names")
@@ -3532,7 +3548,7 @@ wt_snip_list() {
             41 42 43 44 45 46 47 48 49 50 2>/dev/null; printf '\n'
         printf '%s\n' "$_names" | while IFS= read -r _n; do
             [ -z "$_n" ] && continue
-            _d=$(snip_get "$_n" "desc")
+            _d=$(snip_get "$_n" "description")
             _s=$(snip_get "$_n" "use_sudo")
             _sf="no"; [ "$_s" = "yes" ] && _sf="yes"
             printf '%-22s %-5s %s\n' "$_n" "$_sf" "$_d"
@@ -3544,8 +3560,8 @@ wt_snip_list() {
 
 wt_show_snip_info() {
     _name="$1"
-    _desc=$(snip_get "$_name" "desc")
-    _cmd=$(snip_get  "$_name" "cmd")
+    _desc=$(snip_get "$_name" "description")
+    _cmd=$(snip_get  "$_name" "command")
     _sudo=$(snip_get "$_name" "use_sudo")
     _cre=$(snip_get  "$_name" "created")
     _txt=$(
