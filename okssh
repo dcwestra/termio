@@ -1,81 +1,81 @@
 #!/usr/bin/env sh
-# termio — SSH alias & connection manager
+# okssh — SSH alias & connection manager
 # POSIX sh compatible (bash & zsh safe)
 # Version 3.9.0
 #
 # USAGE:
-#   termio [-v]                              Interactive TUI/CLI menu
-#   termio [-v] add                          Add a new SSH alias
-#   termio [-v] connect <alias>              Connect to a saved alias
-#   termio [-v] ls|list [--group <g>]        List all aliases (optionally filter by group)
-#   termio [-v] info   <alias>               Show alias details + fingerprint
-#   termio [-v] edit   <alias>               Edit an alias
-#   termio [-v] rm     <alias>               Remove an alias
-#   termio [-v] test   [alias]               Test one alias, or all if no alias given
-#   termio [-v] rotate <alias>               Rotate SSH key for an alias
-#   termio [-v] export [file]                Export aliases to a portable file
-#   termio [-v] import <file>                Import aliases from export file
-#   termio [-v] run    <alias> <cmd>         Run a one-off remote command
-#   termio [-v] copy   <src>   <dst>         Copy files via sftp (alias:/path)
-#   termio [-v] status                       Test all connections (dashboard)
-#   termio [-v] audit                        Audit SSH key ages
-#   termio       prefer [whiptail|cli]       Show or set preferences
-#   termio       prefer audit_threshold <N>  Key rotation threshold (days)
-#   termio       prefer key_type <type>      Default key type (ed25519/rsa/ecdsa)
-#   termio [-v] sync                         Show sync status
-#   termio [-v] sync init                    Set up sync folder
-#   termio [-v] sync detach                  Remove sync, restore files locally
-#   termio [-v] sync keys                    Show key sync status
-#   termio [-v] sync keys enable             Opt in to encrypted key sync
-#   termio [-v] sync keys disable            Remove encrypted key archive
-#   termio [-v] sync keys update             Rebuild encrypted key archive
-#   termio [-v] snip                         List all snippets
-#   termio [-v] snip add                     Add a new snippet
-#   termio [-v] snip run  <name> [--group]   Run a snippet on one or more hosts
-#   termio [-v] snip edit <name>             Edit a snippet
-#   termio [-v] snip rm   <name>             Remove a snippet
-#   termio [-v] snip info <name>             Show snippet details
-#   termio [-v] tunnel                       List tunnels and status
-#   termio [-v] tunnel add <n> <alias> <fwd> Add a named port-forward tunnel
-#   termio [-v] tunnel start <name>          Start a tunnel
-#   termio [-v] tunnel stop  <name>          Stop a running tunnel
-#   termio [-v] tunnel rm    <name>          Remove a tunnel
-#   termio [-v] agent                        List alias keys in ssh-agent
-#   termio [-v] agent add [alias]            Load alias key(s) into agent
-#   termio [-v] agent rm  <alias>            Remove alias key from agent
-#   termio [-v] agent clear                  Remove all keys from agent
-#   termio [-v] backup                       List SSH config backups
-#   termio [-v] backup restore <N>           Restore a numbered backup
-#   termio       pin   <alias>               Pin alias to top of list
-#   termio       unpin <alias>               Unpin alias
-#   termio [-v] clone  <alias> [<new>]       Clone an alias as a new starting point
-#   termio [-v] rename <old>   <new>         Rename an alias (updates keys + prefs)
-#   termio       tag   <alias> <group>       Add a group tag to an alias
-#   termio       untag <alias> <group>       Remove a group tag from an alias
-#   termio [-v] open  <alias>               Open an SFTP session to an alias
-#   termio [-v] wake  <alias>               Send Wake-on-LAN magic packet
-#   termio [-v] log   [alias]               Show connection history
-#   termio [-v] diff                         Diff local aliases vs sync export
-#   termio       template list               List saved add-wizard templates
-#   termio       template save <name>        Save current defaults as a template
-#   termio       template rm   <name>        Remove a template
-#   termio       version                     Show version
-#   termio       help                        Show this help
+#   okssh [-v]                              Interactive TUI/CLI menu
+#   okssh [-v] add                          Add a new SSH alias
+#   okssh [-v] connect <alias>              Connect to a saved alias
+#   okssh [-v] ls|list [--group <g>]        List all aliases (optionally filter by group)
+#   okssh [-v] info   <alias>               Show alias details + fingerprint
+#   okssh [-v] edit   <alias>               Edit an alias
+#   okssh [-v] rm     <alias>               Remove an alias
+#   okssh [-v] test   [alias]               Test one alias, or all if no alias given
+#   okssh [-v] rotate <alias>               Rotate SSH key for an alias
+#   okssh [-v] export [file]                Export aliases to a portable file
+#   okssh [-v] import <file>                Import aliases from export file
+#   okssh [-v] run    <alias> <cmd>         Run a one-off remote command
+#   okssh [-v] copy   <src>   <dst>         Copy files via sftp (alias:/path)
+#   okssh [-v] status                       Test all connections (dashboard)
+#   okssh [-v] audit                        Audit SSH key ages
+#   okssh       prefer [whiptail|cli]       Show or set preferences
+#   okssh       prefer audit_threshold <N>  Key rotation threshold (days)
+#   okssh       prefer key_type <type>      Default key type (ed25519/rsa/ecdsa)
+#   okssh [-v] sync                         Show sync status
+#   okssh [-v] sync init                    Set up sync folder
+#   okssh [-v] sync detach                  Remove sync, restore files locally
+#   okssh [-v] sync keys                    Show key sync status
+#   okssh [-v] sync keys enable             Opt in to encrypted key sync
+#   okssh [-v] sync keys disable            Remove encrypted key archive
+#   okssh [-v] sync keys update             Rebuild encrypted key archive
+#   okssh [-v] snip                         List all snippets
+#   okssh [-v] snip add                     Add a new snippet
+#   okssh [-v] snip run  <name> [--group]   Run a snippet on one or more hosts
+#   okssh [-v] snip edit <name>             Edit a snippet
+#   okssh [-v] snip rm   <name>             Remove a snippet
+#   okssh [-v] snip info <name>             Show snippet details
+#   okssh [-v] tunnel                       List tunnels and status
+#   okssh [-v] tunnel add <n> <alias> <fwd> Add a named port-forward tunnel
+#   okssh [-v] tunnel start <name>          Start a tunnel
+#   okssh [-v] tunnel stop  <name>          Stop a running tunnel
+#   okssh [-v] tunnel rm    <name>          Remove a tunnel
+#   okssh [-v] agent                        List alias keys in ssh-agent
+#   okssh [-v] agent add [alias]            Load alias key(s) into agent
+#   okssh [-v] agent rm  <alias>            Remove alias key from agent
+#   okssh [-v] agent clear                  Remove all keys from agent
+#   okssh [-v] backup                       List SSH config backups
+#   okssh [-v] backup restore <N>           Restore a numbered backup
+#   okssh       pin   <alias>               Pin alias to top of list
+#   okssh       unpin <alias>               Unpin alias
+#   okssh [-v] clone  <alias> [<new>]       Clone an alias as a new starting point
+#   okssh [-v] rename <old>   <new>         Rename an alias (updates keys + prefs)
+#   okssh       tag   <alias> <group>       Add a group tag to an alias
+#   okssh       untag <alias> <group>       Remove a group tag from an alias
+#   okssh [-v] open  <alias>               Open an SFTP session to an alias
+#   okssh [-v] wake  <alias>               Send Wake-on-LAN magic packet
+#   okssh [-v] log   [alias]               Show connection history
+#   okssh [-v] diff                         Diff local aliases vs sync export
+#   okssh       template list               List saved add-wizard templates
+#   okssh       template save <name>        Save current defaults as a template
+#   okssh       template rm   <name>        Remove a template
+#   okssh       version                     Show version
+#   okssh       help                        Show this help
 #
 # FLAGS:
 #   -v | --verbose    Show background operations normally run silently
 
-TERMIO_VERSION="3.9.0"
+OKSSH_VERSION="3.9.0"
 
 set -e
 
 # ── Verbose flag — parse before anything else ─────────────────────────────────
-# Supports: termio -v <cmd>  or  termio --verbose <cmd>
+# Supports: okssh -v <cmd>  or  okssh --verbose <cmd>
 # Strips the flag so $1 is always the subcommand downstream.
 
-TERMIO_VERBOSE=0
+OKSSH_VERBOSE=0
 if [ "${1:-}" = "-v" ] || [ "${1:-}" = "--verbose" ]; then
-    TERMIO_VERBOSE=1
+    OKSSH_VERBOSE=1
     shift
 fi
 
@@ -83,8 +83,26 @@ fi
 
 SSH_DIR="$HOME/.ssh"
 CONFIG_FILE="$SSH_DIR/config"
-CONF_DIR="$HOME/.config/termio"
+if [ -d "$HOME/.config/termio" ] && [ ! -d "$HOME/.config/okssh" ]; then
+    mv "$HOME/.config/termio" "$HOME/.config/okssh"
+    printf "Migrated ~/.config/termio → ~/.config/okssh\n"
+fi
+
+CONF_DIR="$HOME/.config/okssh"
 PREF_FILE="$CONF_DIR/preferences"
+
+if [ -f "$PREF_FILE" ]; then
+    _old_sync=$(awk -F'=' '/^sync_path=/{print $2}' "$PREF_FILE")
+    if [ -n "$_old_sync" ] && [ "${_old_sync##*/}" = "termio-sync" ]; then
+        _new_sync="${_old_sync%/termio-sync}/okssh-sync"
+        if [ -d "$_old_sync" ] && [ ! -d "$_new_sync" ]; then
+            mv "$_old_sync" "$_new_sync"
+            printf "Migrated %s → %s\n" "$_old_sync" "$_new_sync"
+        fi
+        sed -i "s|^sync_path=.*|sync_path=$_new_sync|" "$PREF_FILE"
+    fi
+    unset _old_sync _new_sync
+fi
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 
@@ -111,7 +129,7 @@ info()    { printf "${C_CYAN}  →${C_RESET} %b\n" "$1"; }
 success() { printf "${C_GREEN}  ✔${C_RESET} %b\n" "$1"; }
 warn()    { printf "${C_YELLOW}  ⚠${C_RESET}  %b\n" "$1"; }
 # vlog — verbose-only output, silent unless -v flag set
-vlog()    { [ "$TERMIO_VERBOSE" -eq 1 ] && printf "${C_DIM}  [v] %b${C_RESET}\n" "$1" || true; }
+vlog()    { [ "$OKSSH_VERBOSE" -eq 1 ] && printf "${C_DIM}  [v] %b${C_RESET}\n" "$1" || true; }
 
 # ── Display helpers ───────────────────────────────────────────────────────────
 
@@ -196,7 +214,7 @@ print_banner() {
 
     printf '\n'
     printf "${C_LBLUE}╔══════════════════════════════════════════════╗${C_RESET}\n"
-    printf "${C_LBLUE}║${C_RESET}  ${C_BOLD}${C_WHITE}termio${C_RESET} ${C_DIM}—${C_RESET} SSH Connection Manager  ${C_ORANGE}v%-6s${C_RESET}    ${C_LBLUE}║${C_RESET}\n" "$TERMIO_VERSION"
+    printf "${C_LBLUE}║${C_RESET}  ${C_BOLD}${C_WHITE}okssh${C_RESET} ${C_DIM}—${C_RESET} SSH Connection Manager  ${C_ORANGE}v%-6s${C_RESET}    ${C_LBLUE}║${C_RESET}\n" "$OKSSH_VERSION"
     printf "${C_LBLUE}╚══════════════════════════════════════════════╝${C_RESET}\n"
     printf "  %b\n\n" "$_sync_line"
 }
@@ -268,14 +286,14 @@ install_whiptail() {
 
     if [ -z "$WHIPTAIL_INSTALL_CMD" ]; then
         if [ "$DISTRO_ID" = "macos" ]; then
-            warn "macOS detected — cannot auto-install via termio."
+            warn "macOS detected — cannot auto-install via okssh."
             printf "  Install with Homebrew:\n"
             printf "    ${C_BOLD}brew install newt${C_RESET}\n"
-            printf "  Then run: ${C_BOLD}termio prefer whiptail${C_RESET}\n\n"
+            printf "  Then run: ${C_BOLD}okssh prefer whiptail${C_RESET}\n\n"
         else
             warn "Unrecognised distro — cannot auto-install."
             printf "  Install whiptail or newt manually, then run:\n"
-            printf "    ${C_BOLD}termio prefer whiptail${C_RESET}\n\n"
+            printf "    ${C_BOLD}okssh prefer whiptail${C_RESET}\n\n"
         fi
         return 1
     fi
@@ -288,7 +306,7 @@ install_whiptail() {
         [yY]|[yY][eE][sS]) : ;;
         *)
             printf '\n  Installation cancelled.\n'
-            printf "  Preference saved — termio will use whiptail once installed.\n\n"
+            printf "  Preference saved — okssh will use whiptail once installed.\n\n"
             return 1 ;;
     esac
 
@@ -336,7 +354,7 @@ case "$_UI_PREF" in
             vlog "UI: whiptail (preferred + installed)"
         else
             printf "${C_YELLOW}  ⚠${C_RESET}  UI preference is whiptail but it is not installed.\n"
-            printf "  Run ${C_BOLD}termio prefer whiptail${C_RESET} to install it.\n\n"
+            printf "  Run ${C_BOLD}okssh prefer whiptail${C_RESET} to install it.\n\n"
             HAS_WHIPTAIL=0
         fi ;;
     *)
@@ -392,7 +410,7 @@ wt_input() {
     _PROMPT_CANCELLED=0
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _PROMPT_RESULT=$(whiptail --inputbox "$_label" 8 64 "$_default" \
-            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            --title "okssh" --backtitle "okssh v${OKSSH_VERSION}" \
             3>&1 1>&2 2>&3) || { _PROMPT_RESULT=""; _PROMPT_CANCELLED=1; }
     else
         cli_prompt "$_label" "$_default"
@@ -403,7 +421,7 @@ wt_password() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         _PROMPT_RESULT=$(whiptail --passwordbox \
             "$1\n(used once — never saved)" \
-            10 64 --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            10 64 --title "okssh" --backtitle "okssh v${OKSSH_VERSION}" \
             3>&1 1>&2 2>&3) || _PROMPT_RESULT=""
     else
         cli_prompt_secret "$1"
@@ -413,7 +431,7 @@ wt_password() {
 wt_yesno() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         whiptail --yesno "$1" 10 64 \
-            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            --title "okssh" --backtitle "okssh v${OKSSH_VERSION}" \
             3>&1 1>&2 2>&3
         return $?
     else
@@ -425,7 +443,7 @@ wt_yesno() {
 wt_msg() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         whiptail --msgbox "$1" 14 64 \
-            --title "termio" --backtitle "termio v${TERMIO_VERSION}" \
+            --title "okssh" --backtitle "okssh v${OKSSH_VERSION}" \
             3>&1 1>&2 2>&3 || true
     else
         printf '\n  %s\n\n  Press Enter to continue...' "$1"
@@ -443,8 +461,8 @@ list_aliases() {
 _warn_ssh_includes() {
     [ -f "$CONFIG_FILE" ] || return 0
     grep -q '^Include ' "$CONFIG_FILE" 2>/dev/null || return 0
-    warn "~/.ssh/config contains Include directives — termio won't manage those hosts."
-    printf "  Hosts in included files are visible to ssh but not to termio ls/status/audit.\n\n"
+    warn "~/.ssh/config contains Include directives — okssh won't manage those hosts."
+    printf "  Hosts in included files are visible to ssh but not to okssh ls/status/audit.\n\n"
 }
 
 get_field() {
@@ -530,11 +548,11 @@ cmd_backup() {
                 _bn=$(( _bn + 1 ))
             done
             printf '\n'
-            printf "  Restore with: ${C_BOLD}termio backup restore <N>${C_RESET}\n\n"
+            printf "  Restore with: ${C_BOLD}okssh backup restore <N>${C_RESET}\n\n"
             ;;
         restore)
             _bn="${2:-}"
-            [ -z "$_bn" ] && die "Usage: termio backup restore <N>"
+            [ -z "$_bn" ] && die "Usage: okssh backup restore <N>"
             case "$_bn" in *[!0-9]*) die "Backup number must be a positive integer." ;; esac
             _bfiles=$(ls -t "$BACKUP_DIR"/config.* 2>/dev/null || true)
             [ -z "$_bfiles" ] && die "No backups found."
@@ -552,7 +570,7 @@ cmd_backup() {
             printf '\n'
             ;;
         *)
-            die "Usage: termio backup [list | restore <N>]"
+            die "Usage: okssh backup [list | restore <N>]"
             ;;
     esac
 }
@@ -560,17 +578,17 @@ cmd_backup() {
 # ── bootstrap ──────────────────────────────────────────────────────────────────
 # Generates the shell profile content deployed to remote hosts.
 # Uses single quotes throughout to avoid variable expansion at definition time.
-_termio_profile_content() {
+_okssh_profile_content() {
     cat << 'PROFILE_END'
-# termio shell profile — sourced by .zshrc / .bashrc
+# okssh shell profile — sourced by .zshrc / .bashrc
 # Snippet fuzzy-insert: Ctrl+X s  (requires fzf on remote)
-_termio_snip() {
-    _tsf="$HOME/.config/termio/snippet-list.txt"
+_okssh_snip() {
+    _tsf="$HOME/.config/okssh/snippet-list.txt"
     [ -f "$_tsf" ] || return 0
     command -v fzf >/dev/null 2>&1 || return 0
     _tsel=$(awk -F'\t' '{printf "%-26s  %s\n", $1, $3}' "$_tsf" \
         | fzf --height=40% --reverse --no-sort --prompt="snippet> " \
-              --preview='f=~/.config/termio/snippet-list.txt
+              --preview='f=~/.config/okssh/snippet-list.txt
 n=$(echo {1} | tr -d " ")
 awk -F"\t" -v n="$n" "\$1==n{print \$2}" "$f"' \
               --preview-window=down:2:wrap)
@@ -587,11 +605,11 @@ awk -F"\t" -v n="$n" "\$1==n{print \$2}" "$f"' \
     fi
 }
 if [ -n "$ZSH_VERSION" ]; then
-    zle -N _termio_snip
-    bindkey '^Xs' _termio_snip
+    zle -N _okssh_snip
+    bindkey '^Xs' _okssh_snip
 fi
 if [ -n "$BASH_VERSION" ]; then
-    bind -x '"\C-xs": _termio_snip' 2>/dev/null || true
+    bind -x '"\C-xs": _okssh_snip' 2>/dev/null || true
 fi
 PROFILE_END
 }
@@ -693,7 +711,7 @@ _bootstrap_check_deps() {
 }
 
 # Generates TSV snippet list: name <TAB> cmd <TAB> desc
-_termio_snip_list_content() {
+_okssh_snip_list_content() {
     _tsnames=$(snip_list_names)
     [ -z "$_tsnames" ] && return 0
     printf '%s\n' "$_tsnames" | while IFS= read -r _tsn; do
@@ -710,15 +728,15 @@ cmd_bootstrap() {
         --list|-l|list)
             _bootstrap_list; return 0 ;;
         --remove|-r|remove)
-            [ -z "$_bal" ] && die "Usage: termio bootstrap remove <alias>"
+            [ -z "$_bal" ] && die "Usage: okssh bootstrap remove <alias>"
             alias_exists "$_bal" || die "Alias '$_bal' not found"
             _bootstrap_remove "$_bal"; return 0 ;;
         --update|-u|update)
-            [ -z "$_bal" ] && die "Usage: termio bootstrap update <alias>"
+            [ -z "$_bal" ] && die "Usage: okssh bootstrap update <alias>"
             alias_exists "$_bal" || die "Alias '$_bal' not found"
             _bootstrap_push_snips "$_bal" && success "Snippets synced to $_bal"; return 0 ;;
         "")
-            die "Usage: termio bootstrap <alias> | list | update <alias> | remove <alias>" ;;
+            die "Usage: okssh bootstrap <alias> | list | update <alias> | remove <alias>" ;;
         *)
             # treat first arg as alias if it's not a subcommand
             _bal="$_bsub"
@@ -739,19 +757,19 @@ _bootstrap_install() {
     # Push profile script (prepend PATH fix if fzf was git-installed)
     {
         [ -n "$_fzf_path_prefix" ] && printf '%s\n' "$_fzf_path_prefix"
-        _termio_profile_content
+        _okssh_profile_content
     } | ssh -F "$CONFIG_FILE" "$_bia" \
-        'mkdir -p ~/.config/termio && cat > ~/.config/termio/shell-init.sh && chmod 600 ~/.config/termio/shell-init.sh' \
+        'mkdir -p ~/.config/okssh && cat > ~/.config/okssh/shell-init.sh && chmod 600 ~/.config/okssh/shell-init.sh' \
         || die "Failed to copy profile to $_bia"
     # Push snippet list
     _bootstrap_push_snips "$_bia" || true
     # Add source guard to .zshrc and .bashrc (idempotent)
     ssh -F "$CONFIG_FILE" "$_bia" '
-        _sl="[ -f \"$HOME/.config/termio/shell-init.sh\" ] && . \"$HOME/.config/termio/shell-init.sh\""
+        _sl="[ -f \"$HOME/.config/okssh/shell-init.sh\" ] && . \"$HOME/.config/okssh/shell-init.sh\""
         for _sf in ~/.zshrc ~/.bashrc; do
             [ -f "$_sf" ] || continue
-            grep -qF "termio/shell-init.sh" "$_sf" 2>/dev/null && continue
-            printf "\n# termio profile\n%s\n" "$_sl" >> "$_sf"
+            grep -qF "okssh/shell-init.sh" "$_sf" 2>/dev/null && continue
+            printf "\n# okssh profile\n%s\n" "$_sl" >> "$_sf"
             printf "  appended to %s\n" "$_sf"
         done
     ' || true
@@ -762,23 +780,23 @@ _bootstrap_install() {
 
 _bootstrap_push_snips() {
     _bpa="$1"
-    _termio_snip_list_content | ssh -F "$CONFIG_FILE" "$_bpa" \
-        'mkdir -p ~/.config/termio && cat > ~/.config/termio/snippet-list.txt'
+    _okssh_snip_list_content | ssh -F "$CONFIG_FILE" "$_bpa" \
+        'mkdir -p ~/.config/okssh && cat > ~/.config/okssh/snippet-list.txt'
 }
 
 _bootstrap_remove() {
     _bra="$1"
     info "Removing snippet widget from ${C_BOLD}$_bra${C_RESET}…"
     ssh -F "$CONFIG_FILE" "$_bra" '
-        rm -f ~/.config/termio/shell-init.sh ~/.config/termio/snippet-list.txt
+        rm -f ~/.config/okssh/shell-init.sh ~/.config/okssh/snippet-list.txt
         for _sf in ~/.zshrc ~/.bashrc; do
             [ -f "$_sf" ] || continue
-            grep -qF "termio/shell-init.sh" "$_sf" 2>/dev/null || continue
-            # Remove "# termio profile\n<source line>" block
-            sed -i '/^# termio profile$/{N;d}' "$_sf" 2>/dev/null || \
-            sed -i'' '/^# termio profile$/{N;d}' "$_sf" 2>/dev/null || true
-            sed -i "/termio\/shell-init.sh/d" "$_sf" 2>/dev/null || \
-            sed -i'' "/termio\/shell-init.sh/d" "$_sf" 2>/dev/null || true
+            grep -qF "okssh/shell-init.sh" "$_sf" 2>/dev/null || continue
+            # Remove "# okssh profile\n<source line>" block
+            sed -i '/^# okssh profile$/{N;d}' "$_sf" 2>/dev/null || \
+            sed -i'' '/^# okssh profile$/{N;d}' "$_sf" 2>/dev/null || true
+            sed -i "/okssh\/shell-init.sh/d" "$_sf" 2>/dev/null || \
+            sed -i'' "/okssh\/shell-init.sh/d" "$_sf" 2>/dev/null || true
             printf "  cleaned %s\n" "$_sf"
         done
     '
@@ -805,7 +823,7 @@ _bootstrap_list() {
 _connect_with_profile() {
     _cpa="$1"   # alias
     _tag="t$$"
-    _tdir="/tmp/._termio_${_tag}"
+    _tdir="/tmp/._okssh_${_tag}"
 
     info "Preparing session profile for ${C_BOLD}$_cpa${C_RESET}…"
     printf '\n'
@@ -817,12 +835,12 @@ _connect_with_profile() {
     # Push profile + snippets in two non-interactive connections
     {
         [ -n "$_fzf_path_prefix" ] && printf '%s\n' "$_fzf_path_prefix"
-        _termio_profile_content
+        _okssh_profile_content
     } | ssh -F "$CONFIG_FILE" "$_cpa" \
-        "mkdir -p '${_tdir}' ~/.config/termio && cat > '${_tdir}/profile.sh'" \
+        "mkdir -p '${_tdir}' ~/.config/okssh && cat > '${_tdir}/profile.sh'" \
         || die "Could not push profile to $_cpa"
-    _termio_snip_list_content | ssh -F "$CONFIG_FILE" "$_cpa" \
-        "cat > '${_tdir}/snips.txt' && cp '${_tdir}/snips.txt' ~/.config/termio/snippet-list.txt"
+    _okssh_snip_list_content | ssh -F "$CONFIG_FILE" "$_cpa" \
+        "cat > '${_tdir}/snips.txt' && cp '${_tdir}/snips.txt' ~/.config/okssh/snippet-list.txt"
 
     # Detect remote login shell
     _cpsh=$(ssh -F "$CONFIG_FILE" "$_cpa" 'printf "%s" "$SHELL"' 2>/dev/null)
@@ -900,9 +918,9 @@ sync_auto_export() {
     vlog "sync_auto_export: writing $_export_file"
     _aliases=$(list_aliases)
     {
-        printf '# termio aliases export — auto-updated\n'
-        printf '# version %s — %s\n' "$TERMIO_VERSION" "$(date)"
-        printf '# Import with: termio import <file>\n\n'
+        printf '# okssh aliases export — auto-updated\n'
+        printf '# version %s — %s\n' "$OKSSH_VERSION" "$(date)"
+        printf '# Import with: okssh import <file>\n\n'
 
         printf '%s\n' "$_aliases" | while IFS= read -r _alias; do
             [ -z "$_alias" ] && continue
@@ -1001,7 +1019,7 @@ wt_pick_alias() {
 $(printf '%s\n' "$_aliases")
 _EOF
     SELECTED_ALIAS=$(whiptail \
-        --title "termio v${TERMIO_VERSION}" \
+        --title "okssh v${OKSSH_VERSION}" \
         --cancel-button "Back" \
         --menu "$_title" "$TH" "$TW" 10 \
         "$@" \
@@ -1074,7 +1092,7 @@ cmd_template() {
         list|ls|"")
             _tnames=$(template_list_names)
             if [ -z "$_tnames" ]; then
-                printf '\n  No templates saved. Create one with: termio template save <name>\n\n'
+                printf '\n  No templates saved. Create one with: okssh template save <name>\n\n'
                 return 0
             fi
             printf "\n  ${C_BOLD}Saved templates:${C_RESET}\n\n"
@@ -1090,7 +1108,7 @@ cmd_template() {
             ;;
         save)
             _tname=$(sanitize_alias "${2:-}")
-            [ -z "$_tname" ] && die "Usage: termio template save <name>"
+            [ -z "$_tname" ] && die "Usage: okssh template save <name>"
             _def_ktype=$(pref_get "key_type"); [ -z "$_def_ktype" ] && _def_ktype="ed25519"
             wt_input "Default username"           "$(whoami)"; _tu="$_PROMPT_RESULT"
             wt_input "Default SSH port"           "22";        _tp="$_PROMPT_RESULT"
@@ -1104,7 +1122,7 @@ cmd_template() {
             ;;
         rm|remove)
             _tname="${2:-}"
-            [ -z "$_tname" ] && die "Usage: termio template rm <name>"
+            [ -z "$_tname" ] && die "Usage: okssh template rm <name>"
             template_remove_block "$_tname"
             success "Template \"$_tname\" removed."
             ;;
@@ -1142,7 +1160,7 @@ cmd_add() {
                 done <<_TTEOF
 $(printf '%s\n' "$_tnames")
 _TTEOF
-                _tsel=$(whiptail --title "termio v${TERMIO_VERSION}" \
+                _tsel=$(whiptail --title "okssh v${OKSSH_VERSION}" \
                     --cancel-button "Skip" \
                     --menu "Select template:" "$TH" "$TW" 6 "$@" \
                     3>&1 1>&2 2>&3) || _tsel=""
@@ -1298,12 +1316,12 @@ cmd_pin() {
         { info "\"$_pa\" is already pinned."; return 0; }
     _new=$([ -n "$_cur" ] && printf '%s,%s' "$_cur" "$_pa" || printf '%s' "$_pa")
     pref_set "pinned_aliases" "$_new"
-    success "\"$_pa\" pinned — it will appear at the top of termio ls."
+    success "\"$_pa\" pinned — it will appear at the top of okssh ls."
 }
 
 cmd_unpin() {
     _ua="${1:-}"
-    [ -z "$_ua" ] && die "Usage: termio unpin <alias>"
+    [ -z "$_ua" ] && die "Usage: okssh unpin <alias>"
     _cur=$(pref_get "pinned_aliases")
     [ -z "$_cur" ] && { info "\"$_ua\" is not pinned."; return 0; }
     _new=$(printf '%s' "$_cur" | tr ',' '\n' | grep -vx "$_ua" | tr '\n' ',' | sed 's/,$//' || true)
@@ -1444,7 +1462,7 @@ cmd_list() {
 
 cmd_info() {
     _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio info <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh info <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _host=$(get_field   "$_alias" "HostName")
     _user=$(get_field   "$_alias" "User")
@@ -1546,7 +1564,7 @@ cmd_info() {
 
 cmd_edit() {
     _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio edit <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh edit <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _ch=$(get_field   "$_alias" "HostName")
     _cu=$(get_field   "$_alias" "User")
@@ -1612,7 +1630,7 @@ cmd_edit() {
 
 cmd_clone() {
     _src="${1:-}"
-    [ -z "$_src" ] && die "Usage: termio clone <alias> [<new-alias>]"
+    [ -z "$_src" ] && die "Usage: okssh clone <alias> [<new-alias>]"
     alias_exists "$_src" || die "Alias \"$_src\" not found."
 
     _ch=$(get_field   "$_src" "HostName")
@@ -1690,7 +1708,7 @@ cmd_clone() {
 
 cmd_remove() {
     _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio rm <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh rm <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _key=$(get_field "$_alias" "IdentityFile")
     _host=$(get_field "$_alias" "HostName")
@@ -1724,7 +1742,7 @@ cmd_remove() {
 
 cmd_rename() {
     _old="${1:-}"; _new="${2:-}"
-    [ -z "$_old" ] || [ -z "$_new" ] && die "Usage: termio rename <old-alias> <new-alias>"
+    [ -z "$_old" ] || [ -z "$_new" ] && die "Usage: okssh rename <old-alias> <new-alias>"
     alias_exists "$_old" || die "Alias \"$_old\" not found."
     _new=$(sanitize_alias "$_new")
     [ -z "$_new" ] && die "New alias name contains no valid characters."
@@ -1813,8 +1831,8 @@ cmd_test() {
         printf "${C_RED}  ✘${C_RESET} Connection ${C_RED}failed${C_RESET} (exit %s)\n\n" "$_code"
         printf "  Possible causes:\n"
         printf "    • Host unreachable or firewall blocking port %s\n" "$_port"
-        printf "    • Key not accepted — try: termio rotate %s\n" "$_alias"
-        printf "    • Wrong details — check: termio info %s\n" "$_alias"
+        printf "    • Key not accepted — try: okssh rotate %s\n" "$_alias"
+        printf "    • Wrong details — check: okssh info %s\n" "$_alias"
     fi
     printf '\n'
 }
@@ -1823,7 +1841,7 @@ cmd_test() {
 
 cmd_rotate() {
     _alias="$1"
-    [ -z "$_alias" ] && die "Usage: termio rotate <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh rotate <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
@@ -1888,14 +1906,14 @@ cmd_rotate() {
 # ── EXPORT ────────────────────────────────────────────────────────────────────
 
 cmd_export() {
-    _outfile="${1:-$HOME/termio-export-$(date +%Y%m%d).txt}"
+    _outfile="${1:-$HOME/okssh-export-$(date +%Y%m%d).txt}"
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
         printf '\n  No aliases to export.\n\n'; return 0
     fi
     {
-        printf '# termio export — version %s — %s\n' "$TERMIO_VERSION" "$(date)"
-        printf '# Import with: termio import <file>\n'
+        printf '# okssh export — version %s — %s\n' "$OKSSH_VERSION" "$(date)"
+        printf '# Import with: okssh import <file>\n'
         printf '# NOTE: Private keys are not included.\n\n'
         printf '%s\n' "$_aliases" | while IFS= read -r _alias; do
             _host=$(get_field   "$_alias" "HostName")
@@ -1928,7 +1946,7 @@ cmd_export() {
 
 cmd_import() {
     _infile="$1"
-    [ -z "$_infile" ] && die "Usage: termio import <file>"
+    [ -z "$_infile" ] && die "Usage: okssh import <file>"
     [ -f "$_infile" ] || die "File not found: $_infile"
 
     printf '\n'; info "Reading aliases from: $_infile\n"
@@ -2023,7 +2041,7 @@ _cmd_prefer_alias() {
                     _cur=$(pref_get "sshpass_$_pa")
                     if [ -n "$_cur" ]; then
                         warn "A password is already stored for $_pa."
-                        printf "  To clear it: ${C_BOLD}termio prefer $_pa sshpass clear${C_RESET}\n\n"
+                        printf "  To clear it: ${C_BOLD}okssh prefer $_pa sshpass clear${C_RESET}\n\n"
                         wt_yesno "Overwrite stored password for \"$_pa\"?" || return 0
                     fi
                     printf '\n'
@@ -2039,17 +2057,17 @@ _cmd_prefer_alias() {
                     pref_set "sshpass_$_pa" "$_enc"
                     unset _enc
                     success "Password stored for ${C_BOLD}$_pa${C_RESET}."
-                    printf "  termio connect $_pa        — auto-fills password\n"
-                    printf "  termio connect $_pa --sshpass  — one-time prompt (override)\n\n" ;;
-                *) die "Usage: termio prefer $_pa sshpass  OR  termio prefer $_pa sshpass clear" ;;
+                    printf "  okssh connect $_pa        — auto-fills password\n"
+                    printf "  okssh connect $_pa --sshpass  — one-time prompt (override)\n\n" ;;
+                *) die "Usage: okssh prefer $_pa sshpass  OR  okssh prefer $_pa sshpass clear" ;;
             esac ;;
         wol)
             _wm="${3:-}"
             if [ -z "$_wm" ]; then
                 _cur_mac=$(pref_get "wol_mac_${_pa}")
                 printf '\n  WOL MAC for %s: %s\n\n' "$_pa" "${_cur_mac:-not set}"
-                printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}   — set MAC address\n" "$_pa"
-                printf "  ${C_BOLD}termio prefer %s wol clear${C_RESET}   — remove MAC address\n\n" "$_pa"
+                printf "  ${C_BOLD}okssh prefer %s wol <MAC>${C_RESET}   — set MAC address\n" "$_pa"
+                printf "  ${C_BOLD}okssh prefer %s wol clear${C_RESET}   — remove MAC address\n\n" "$_pa"
                 return 0
             fi
             if [ "$_wm" = "clear" ]; then
@@ -2063,7 +2081,7 @@ _cmd_prefer_alias() {
                 [ "$_wm_octets" -ne 6 ] 2>/dev/null && die "Invalid MAC address: $_wm"
                 pref_set "wol_mac_${_pa}" "$_wm_norm"
                 success "WOL MAC set for \"$_pa\": $wm_norm"
-                printf "  Send WOL packet with: ${C_BOLD}termio wake $_pa${C_RESET}\n\n"
+                printf "  Send WOL packet with: ${C_BOLD}okssh wake $_pa${C_RESET}\n\n"
             fi ;;
         audit_threshold|audit-threshold)
             _global_thresh=$(pref_get "audit_threshold")
@@ -2072,15 +2090,15 @@ _cmd_prefer_alias() {
                 _cur=$(pref_get "audit_threshold_${_pa}")
                 printf '\n  Audit threshold for %s: %s  (global: %s)\n\n' \
                     "$_pa" "${_cur:-inherited (${_global_thresh})}" "$_global_thresh"
-                printf "  ${C_BOLD}termio prefer %s audit_threshold <N>${C_RESET}    — set per-host threshold\n" "$_pa"
-                printf "  ${C_BOLD}termio prefer %s audit_threshold off${C_RESET}    — disable auditing for this host\n" "$_pa"
-                printf "  ${C_BOLD}termio prefer %s audit_threshold clear${C_RESET}  — remove override (inherit global)\n\n" "$_pa"
+                printf "  ${C_BOLD}okssh prefer %s audit_threshold <N>${C_RESET}    — set per-host threshold\n" "$_pa"
+                printf "  ${C_BOLD}okssh prefer %s audit_threshold off${C_RESET}    — disable auditing for this host\n" "$_pa"
+                printf "  ${C_BOLD}okssh prefer %s audit_threshold clear${C_RESET}  — remove override (inherit global)\n\n" "$_pa"
             elif [ "$_pv" = "clear" ] || [ "$_pv" = "reset" ]; then
                 pref_set "audit_threshold_${_pa}" ""
                 success "Per-host audit threshold cleared for ${C_BOLD}$_pa${C_RESET} — inheriting global."
             elif [ "$_pv" = "off" ] || [ "$_pv" = "never" ] || [ "$_pv" = "disable" ]; then
                 warn "⚠  Key rotation auditing disabled for ${C_BOLD}$_pa${C_RESET}."
-                printf "  Re-enable with: ${C_BOLD}termio prefer %s audit_threshold clear${C_RESET}\n\n" "$_pa"
+                printf "  Re-enable with: ${C_BOLD}okssh prefer %s audit_threshold clear${C_RESET}\n\n" "$_pa"
                 pref_set "audit_threshold_${_pa}" "off"
             else
                 case "$_pv" in
@@ -2100,11 +2118,11 @@ _cmd_prefer_alias() {
             printf "    sshpass:          %s\n" "$([ -n "$_sp" ] && printf 'set (stored)' || printf 'not set')"
             printf "    wol_mac:          %s\n" "${_wm:-not set}"
             printf "    audit_threshold:  %s\n\n" "${_at:-inherited (${_global_thresh} days)}"
-            printf "  ${C_BOLD}termio prefer %s auto_agent on|off${C_RESET}\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s sshpass${C_RESET}                   — store password\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s sshpass clear${C_RESET}             — remove stored password\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s wol <MAC>${C_RESET}                 — set Wake-on-LAN MAC\n" "$_pa"
-            printf "  ${C_BOLD}termio prefer %s audit_threshold <N>${C_RESET}       — per-host key rotation threshold\n\n" "$_pa" ;;
+            printf "  ${C_BOLD}okssh prefer %s auto_agent on|off${C_RESET}\n" "$_pa"
+            printf "  ${C_BOLD}okssh prefer %s sshpass${C_RESET}                   — store password\n" "$_pa"
+            printf "  ${C_BOLD}okssh prefer %s sshpass clear${C_RESET}             — remove stored password\n" "$_pa"
+            printf "  ${C_BOLD}okssh prefer %s wol <MAC>${C_RESET}                 — set Wake-on-LAN MAC\n" "$_pa"
+            printf "  ${C_BOLD}okssh prefer %s audit_threshold <N>${C_RESET}       — per-host key rotation threshold\n\n" "$_pa" ;;
         *) die "Unknown per-alias preference: '$_pk'  (use: auto_agent, sshpass, wol, audit_threshold)" ;;
     esac
 }
@@ -2127,14 +2145,14 @@ cmd_prefer() {
         _ktype=$(pref_get "key_type")
         printf "  Audit threshold:       %s days\n" "${_thresh:-90 (default)}"
         printf "  Default key type:      %s\n\n" "${_ktype:-ed25519 (default)}"
-        printf "  ${C_BOLD}termio prefer whiptail${C_RESET}                              — use TUI dialogs\n"
-        printf "  ${C_BOLD}termio prefer cli${C_RESET}                                  — use plain terminal\n"
-        printf "  ${C_BOLD}termio prefer key_type <type>${C_RESET}                      — default key type\n"
-        printf "  ${C_BOLD}termio prefer audit_threshold <N>${C_RESET}                  — key rotation threshold (global)\n"
-        printf "  ${C_BOLD}termio prefer <alias> audit_threshold <N>${C_RESET}          — per-host key rotation threshold\n"
-        printf "  ${C_BOLD}termio prefer <alias> audit_threshold clear${C_RESET}        — remove per-host override\n"
-        printf "  ${C_BOLD}termio prefer <alias> auto_agent on|off${C_RESET}            — auto-load key to agent\n"
-        printf "  ${C_BOLD}termio prefer <alias> sshpass${C_RESET}                      — store password for alias\n\n"
+        printf "  ${C_BOLD}okssh prefer whiptail${C_RESET}                              — use TUI dialogs\n"
+        printf "  ${C_BOLD}okssh prefer cli${C_RESET}                                  — use plain terminal\n"
+        printf "  ${C_BOLD}okssh prefer key_type <type>${C_RESET}                      — default key type\n"
+        printf "  ${C_BOLD}okssh prefer audit_threshold <N>${C_RESET}                  — key rotation threshold (global)\n"
+        printf "  ${C_BOLD}okssh prefer <alias> audit_threshold <N>${C_RESET}          — per-host key rotation threshold\n"
+        printf "  ${C_BOLD}okssh prefer <alias> audit_threshold clear${C_RESET}        — remove per-host override\n"
+        printf "  ${C_BOLD}okssh prefer <alias> auto_agent on|off${C_RESET}            — auto-load key to agent\n"
+        printf "  ${C_BOLD}okssh prefer <alias> sshpass${C_RESET}                      — store password for alias\n\n"
         return 0
     fi
 
@@ -2146,7 +2164,7 @@ cmd_prefer() {
             else
                 printf '\n'; warn "whiptail is not installed.\n"
                 printf '\n'
-                printf "  termio will use whiptail once it is installed.\n"
+                printf "  okssh will use whiptail once it is installed.\n"
                 printf "  Your preference will be saved either way.\n\n"
                 printf "  ${C_BOLD}Install whiptail now? (y/N):${C_RESET} "
                 IFS= read -r _ans; printf '\n'
@@ -2192,7 +2210,7 @@ cmd_prefer() {
                 case "$_val" in
                     off|never|disable|disabled)
                         warn "⚠  Disabling key rotation auditing. SSH keys will not be flagged for age."
-                        printf "  Re-enable with: ${C_BOLD}termio prefer audit_threshold 90${C_RESET}\n\n"
+                        printf "  Re-enable with: ${C_BOLD}okssh prefer audit_threshold 90${C_RESET}\n\n"
                         pref_set "audit_threshold" "off" ;;
                     reset|default)
                         pref_set "audit_threshold" ""
@@ -2201,7 +2219,7 @@ cmd_prefer() {
                     *)
                         pref_set "audit_threshold" "$_val"
                         success "Audit threshold set to ${C_BOLD}${_val} days${C_RESET}."
-                        printf "  Run ${C_BOLD}termio audit${C_RESET} to check all keys.\n\n" ;;
+                        printf "  Run ${C_BOLD}okssh audit${C_RESET} to check all keys.\n\n" ;;
                 esac
             fi ;;
         *)
@@ -2230,7 +2248,7 @@ cmd_sync_status() {
 
     if [ -z "$_sync_path" ]; then
         printf "  Sync folder:    ${C_DIM}not configured${C_RESET}\n"
-        printf "  Run ${C_BOLD}termio sync init${C_RESET} to set up sync.\n\n"
+        printf "  Run ${C_BOLD}okssh sync init${C_RESET} to set up sync.\n\n"
         return 0
     fi
 
@@ -2245,7 +2263,7 @@ cmd_sync_status() {
     fi
 
     # Marker file
-    _marker="$_sync_path/.termio-sync"
+    _marker="$_sync_path/.okssh-sync"
     if [ -f "$_marker" ]; then
         _init_date=$(awk -F'=' '/^init_date=/{print $2}' "$_marker")
         _init_host=$(awk -F'=' '/^init_host=/{print $2}' "$_marker")
@@ -2274,10 +2292,10 @@ cmd_sync_status() {
         printf "    Last update:  %s\n"  "${_klast:-never}"
         [ -f "$_sync_path/keys.enc" ] \
             && printf "    Archive:      ${C_GREEN}present ✔${C_RESET}\n" \
-            || printf "    Archive:      ${C_YELLOW}missing — run: termio sync keys update${C_RESET}\n"
+            || printf "    Archive:      ${C_YELLOW}missing — run: okssh sync keys update${C_RESET}\n"
     else
         printf "    Status:       ${C_DIM}disabled${C_RESET}\n"
-        printf "    Run ${C_BOLD}termio sync keys enable${C_RESET} to opt in.\n"
+        printf "    Run ${C_BOLD}okssh sync keys enable${C_RESET} to opt in.\n"
     fi
 
     # Symlink status
@@ -2302,13 +2320,13 @@ cmd_sync_status() {
 
 cmd_sync_init() {
     printf '\n'
-    printf "${C_CYAN}${C_BOLD}  termio sync init${C_RESET}\n\n"
+    printf "${C_CYAN}${C_BOLD}  okssh sync init${C_RESET}\n\n"
     printf "  This wizard will:\n"
     printf "    1. Ask where your sync folder is (Nextcloud, Google Drive, Syncthing…)\n"
-    printf "    2. Create a termio-sync directory inside it\n"
+    printf "    2. Create a okssh-sync directory inside it\n"
     printf "    3. Symlink your preferences file into the sync folder\n"
     printf "    4. Write an initial aliases export\n"
-    printf "    5. If an existing termio-sync is found, offer to import from it\n\n"
+    printf "    5. If an existing okssh-sync is found, offer to import from it\n\n"
 
     # Check if already configured
     _existing=$(pref_get "sync_path")
@@ -2337,16 +2355,16 @@ cmd_sync_init() {
     [ -z "$_sync_root" ] && die "No sync path provided."
     [ -d "$_sync_root" ] || die "Directory not found: $_sync_root"
 
-    _sync_path="$_sync_root/termio-sync"
+    _sync_path="$_sync_root/okssh-sync"
     vlog "Target sync path: $_sync_path"
 
-    # Check if an existing termio-sync is there from another machine
+    # Check if an existing okssh-sync is there from another machine
     _found_existing=0
-    if [ -d "$_sync_path" ] && [ -f "$_sync_path/.termio-sync" ]; then
-        _init_host=$(awk -F'=' '/^init_host=/{print $2}' "$_sync_path/.termio-sync")
-        _init_date=$(awk -F'=' '/^init_date=/{print $2}' "$_sync_path/.termio-sync")
+    if [ -d "$_sync_path" ] && [ -f "$_sync_path/.okssh-sync" ]; then
+        _init_host=$(awk -F'=' '/^init_host=/{print $2}' "$_sync_path/.okssh-sync")
+        _init_date=$(awk -F'=' '/^init_date=/{print $2}' "$_sync_path/.okssh-sync")
         printf '\n'
-        info "Found existing termio-sync folder (from ${_init_host}, ${_init_date})"
+        info "Found existing okssh-sync folder (from ${_init_host}, ${_init_date})"
         _found_existing=1
     fi
 
@@ -2355,10 +2373,10 @@ cmd_sync_init() {
     vlog "Created sync directory: $_sync_path"
 
     # Write marker file
-    _marker="$_sync_path/.termio-sync"
+    _marker="$_sync_path/.okssh-sync"
     cat > "$_marker" <<EOF
-# termio sync marker — do not delete
-version=$TERMIO_VERSION
+# okssh sync marker — do not delete
+version=$OKSSH_VERSION
 init_date=$(date '+%Y-%m-%d %H:%M')
 init_host=$(hostname 2>/dev/null || printf 'unknown')
 EOF
@@ -2423,7 +2441,7 @@ EOF
                 cmd_import "$_sync_path/aliases-export.txt"
             else
                 info "Skipped import. You can import later with:"
-                printf "    ${C_BOLD}termio import %s/aliases-export.txt${C_RESET}\n" "$_sync_path"
+                printf "    ${C_BOLD}okssh import %s/aliases-export.txt${C_RESET}\n" "$_sync_path"
             fi
         fi
     fi
@@ -2434,7 +2452,7 @@ EOF
     printf "${C_CYAN}╚══════════════════════════════════════════════╝${C_RESET}\n\n"
     printf "  Sync folder:  %s\n" "$_sync_path"
     printf "  From now on, alias changes are auto-exported to this folder.\n"
-    printf "  On a new machine, run: ${C_BOLD}termio sync init${C_RESET} and point to the same folder.\n\n"
+    printf "  On a new machine, run: ${C_BOLD}okssh sync init${C_RESET} and point to the same folder.\n\n"
 }
 
 # ── SYNC DETACH ───────────────────────────────────────────────────────────────
@@ -2453,7 +2471,7 @@ cmd_sync_detach() {
     printf "    2. Remove the sync path from preferences\n"
     printf "    3. Leave the sync folder itself untouched\n\n"
 
-    if ! wt_yesno "Detach termio from sync folder?"; then
+    if ! wt_yesno "Detach okssh from sync folder?"; then
         printf '  Aborting.\n\n'; return 0
     fi
 
@@ -2481,7 +2499,7 @@ cmd_sync_detach() {
     success "Sync path cleared from preferences."
 
     printf '\n'
-    printf "  termio is now running fully locally.\n"
+    printf "  okssh is now running fully locally.\n"
     printf "  Sync folder at %s is untouched.\n\n" "$_sync_path"
     vlog "sync_detach complete"
 }
@@ -2499,7 +2517,7 @@ sync_keys_update() {
     _enc_file="$_sync_path/keys.enc"
     vlog "sync_keys_update: rebuilding $_enc_file"
 
-    # Collect all keys managed by termio
+    # Collect all keys managed by okssh
     _key_list=$(find "$SSH_DIR" -maxdepth 1 \
         \( -name 'id_ed25519_*' -o -name 'id_rsa_*' -o -name 'id_ecdsa_*' \) \
         ! -name '*.pub' 2>/dev/null || true)
@@ -2516,7 +2534,7 @@ sync_keys_update() {
     _kpass="$_PROMPT_RESULT"
 
     # Build a temp tar of all private keys + their pub files
-    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t okssh)
     _tarball="$_tmpdir/keys.tar"
 
     # Copy keys into temp dir preserving names
@@ -2527,8 +2545,8 @@ sync_keys_update() {
 
     # Add a manifest
     {
-        printf '# termio key archive manifest\n'
-        printf 'version=%s\n' "$TERMIO_VERSION"
+        printf '# okssh key archive manifest\n'
+        printf 'version=%s\n' "$OKSSH_VERSION"
         printf 'created=%s\n' "$(date '+%Y-%m-%d %H:%M')"
         printf 'host=%s\n'    "$(hostname 2>/dev/null || printf 'unknown')"
         printf 'keys=%s\n'    "$(printf '%s\n' "$_key_list" | wc -l | tr -d ' ')"
@@ -2582,7 +2600,7 @@ cmd_sync_keys() {
                 printf "  Key sync:       ${C_GREEN}enabled${C_RESET}\n"
             else
                 printf "  Key sync:       ${C_DIM}disabled${C_RESET}\n"
-                printf "  Run ${C_BOLD}termio sync keys enable${C_RESET} to opt in.\n\n"
+                printf "  Run ${C_BOLD}okssh sync keys enable${C_RESET} to opt in.\n\n"
                 return 0
             fi
 
@@ -2595,7 +2613,7 @@ cmd_sync_keys() {
                 _size=$(wc -c < "$_enc" 2>/dev/null | tr -d ' ')
                 printf "  Archive:        ${C_GREEN}present${C_RESET} (%s bytes)\n" "$_size"
             else
-                printf "  Archive:        ${C_YELLOW}not found${C_RESET} — run: termio sync keys update\n"
+                printf "  Archive:        ${C_YELLOW}not found${C_RESET} — run: okssh sync keys update\n"
             fi
 
             printf "  Keys archived:  %s\n"  "${_kcount:-unknown}"
@@ -2609,7 +2627,7 @@ cmd_sync_keys() {
         # ── ENABLE ──────────────────────────────────────────────────────────
         enable)
             _sync_path=$(pref_get "sync_path")
-            [ -z "$_sync_path" ] && die "Sync not configured. Run: termio sync init"
+            [ -z "$_sync_path" ] && die "Sync not configured. Run: okssh sync init"
             [ -d "$_sync_path" ] || die "Sync folder not reachable: $_sync_path"
 
             command -v openssl >/dev/null 2>&1 \
@@ -2619,7 +2637,7 @@ cmd_sync_keys() {
             if [ "$_ks" = "enabled" ]; then
                 printf '\n'
                 warn "Key sync is already enabled."
-                printf "  Use ${C_BOLD}termio sync keys update${C_RESET} to rebuild the archive.\n\n"
+                printf "  Use ${C_BOLD}okssh sync keys update${C_RESET} to rebuild the archive.\n\n"
                 return 0
             fi
 
@@ -2632,7 +2650,7 @@ cmd_sync_keys() {
             printf "    • Your keys travel with your sync provider\n"
             printf "    • Security depends on your passphrase strength AND\n"
             printf "      your sync provider's security\n"
-            printf "    • The passphrase is NEVER stored anywhere by termio\n"
+            printf "    • The passphrase is NEVER stored anywhere by okssh\n"
             printf "    • You will be prompted for it each time keys are\n"
             printf "      archived or restored\n"
             printf "    • AES-256-CBC with PBKDF2 (600,000 iterations)\n\n"
@@ -2715,14 +2733,14 @@ cmd_sync_keys() {
         # ── UPDATE ──────────────────────────────────────────────────────────
         update)
             _ks=$(pref_get "keys_sync")
-            [ "$_ks" = "enabled" ] || die "Key sync is not enabled. Run: termio sync keys enable"
+            [ "$_ks" = "enabled" ] || die "Key sync is not enabled. Run: okssh sync keys enable"
             sync_keys_update
             ;;
 
         # ── RESTORE ─────────────────────────────────────────────────────────
         restore)
             _sync_path=$(pref_get "sync_path")
-            [ -z "$_sync_path" ] && die "Sync not configured. Run: termio sync init"
+            [ -z "$_sync_path" ] && die "Sync not configured. Run: okssh sync init"
             _enc="$_sync_path/keys.enc"
             [ -f "$_enc" ] || die "No key archive found at: $_enc"
 
@@ -2742,7 +2760,7 @@ cmd_sync_keys() {
             cli_prompt_secret "Key-sync passphrase"
             _kpass="$_PROMPT_RESULT"
 
-            _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+            _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t okssh)
 
             printf '%s' "$_kpass" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
                 -pass stdin -in "$_enc" -out "$_tmpdir/keys.tar" 2>/dev/null || {
@@ -2807,7 +2825,7 @@ cmd_sync() {
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Snippets are named, reusable commands run sequentially on one or more aliases.
-# Storage: ~/.config/termio/snippets
+# Storage: ~/.config/okssh/snippets
 # Also auto-exported to <sync-folder>/snippets-export.txt when sync is active.
 
 SNIPPET_FILE="$CONF_DIR/snippets"
@@ -2874,7 +2892,7 @@ snip_auto_export() {
 cmd_snip_list() {
     _names=$(snip_list_names)
     if [ -z "$_names" ]; then
-        printf '\n  No snippets saved. Run: termio snip add\n\n'; return 0
+        printf '\n  No snippets saved. Run: okssh snip add\n\n'; return 0
     fi
     printf '\n'
     printf "${C_CYAN}${C_BOLD}  %-22s %-6s %s${C_RESET}\n" "NAME" "SUDO" "DESCRIPTION"
@@ -2898,7 +2916,7 @@ cmd_snip_list() {
 
 cmd_snip_info() {
     _name="$1"
-    [ -z "$_name" ] && die "Usage: termio snip info <name>"
+    [ -z "$_name" ] && die "Usage: okssh snip info <name>"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
     _desc=$(snip_get "$_name" "desc")
     _cmd=$(snip_get  "$_name" "cmd")
@@ -2952,14 +2970,14 @@ cmd_snip_add() {
     snip_write "$_sname" "$_sdesc" "$_scmd" "$_ssudo"
     snip_auto_export
     success "Snippet \"$_sname\" saved."
-    printf "\n  Run with: ${C_BOLD}termio snip run %s${C_RESET}\n\n" "$_sname"
+    printf "\n  Run with: ${C_BOLD}okssh snip run %s${C_RESET}\n\n" "$_sname"
 }
 
 # ── snip edit ─────────────────────────────────────────────────────────────────
 
 cmd_snip_edit() {
     _name="$1"
-    [ -z "$_name" ] && die "Usage: termio snip edit <name>"
+    [ -z "$_name" ] && die "Usage: okssh snip edit <name>"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
     _cd=$(snip_get "$_name" "desc")
     _cc=$(snip_get "$_name" "cmd")
@@ -2980,7 +2998,7 @@ cmd_snip_edit() {
 
 cmd_snip_rm() {
     _name="$1"
-    [ -z "$_name" ] && die "Usage: termio snip rm <name>"
+    [ -z "$_name" ] && die "Usage: okssh snip rm <name>"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
     printf '\n'
     warn "About to remove snippet \"${C_BOLD}$_name${C_RESET}\""
@@ -2997,7 +3015,7 @@ cmd_snip_rm() {
 
 cmd_snip_run() {
     _name="${1:-}"
-    [ -z "$_name" ] && die "Usage: termio snip run <name> [--group <tag>] [--parallel]"
+    [ -z "$_name" ] && die "Usage: okssh snip run <name> [--group <tag>] [--parallel]"
     snip_exists "$_name" || die "Snippet \"$_name\" not found."
     shift
     _run_group=""; _run_parallel=0
@@ -3014,7 +3032,7 @@ cmd_snip_run() {
     _rsudo=$(snip_get "$_name" "use_sudo")
 
     _aliases=$(list_aliases)
-    [ -z "$_aliases" ] && die "No SSH aliases configured. Add one with: termio add"
+    [ -z "$_aliases" ] && die "No SSH aliases configured. Add one with: okssh add"
 
     if [ -n "$_run_group" ]; then
         _aliases=$(printf '%s\n' "$_aliases" | while IFS= read -r _a; do
@@ -3044,8 +3062,8 @@ cmd_snip_run() {
 $(printf '%s\n' "$_aliases")
 _EOAL
         _sel=$(whiptail \
-            --title "termio — Run Snippet" \
-            --backtitle "termio v${TERMIO_VERSION}" \
+            --title "okssh — Run Snippet" \
+            --backtitle "okssh v${OKSSH_VERSION}" \
             --checklist "Select target host(s) — SPACE to toggle, ENTER to confirm:" \
             "$TH" "$TW" 10 \
             "$@" \
@@ -3092,7 +3110,7 @@ _EOAL
             warn "Parallel mode skips sudo prompts — running without sudo."
             printf '\n'
         fi
-        _par_tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+        _par_tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t okssh)
         info "Running ${C_BOLD}$_name${C_RESET} on ${_total} host(s) in parallel..."
         printf '\n'
 
@@ -3206,7 +3224,7 @@ wt_pick_snippet() {
 $(printf '%s\n' "$_names")
 _EONS
     SELECTED_SNIPPET=$(whiptail \
-        --title "termio — Snippets" \
+        --title "okssh — Snippets" \
         --menu "$_title" "$TH" "$TW" 10 \
         "$@" \
         3>&1 1>&2 2>&3) || { SELECTED_SNIPPET=""; return 1; }
@@ -3240,7 +3258,7 @@ _strip_colors() {
 wt_scrollmsg() {
     _title="$1"; _body="$2"
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-        whiptail --title "$_title" --backtitle "termio v${TERMIO_VERSION}" \
+        whiptail --title "$_title" --backtitle "okssh v${OKSSH_VERSION}" \
             --scrolltext --msgbox "$_body" "$TH" "$TW" \
             3>&1 1>&2 2>&3 || true
     else
@@ -3253,7 +3271,7 @@ wt_scrollmsg() {
 _wt_tunnel_status_text() {
     _tnames=$(tunnel_list_names)
     if [ -z "$_tnames" ]; then
-        printf 'No tunnels configured.\n\nAdd one:\n  termio tunnel add <name> <alias> <local>:<host>:<port>\n'
+        printf 'No tunnels configured.\n\nAdd one:\n  okssh tunnel add <name> <alias> <local>:<host>:<port>\n'
         return 0
     fi
     printf '%-18s %-9s %-20s %s\n' "NAME" "STATUS" "ALIAS" "FORWARD"
@@ -3306,12 +3324,12 @@ _wt_agent_list_text() {
 wt_status() {
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
-        wt_msg "No aliases configured.\n\nAdd one with: termio add"
+        wt_msg "No aliases configured.\n\nAdd one with: okssh add"
         return 0
     fi
     _timeout=8
     _total=$(printf '%s\n' "$_aliases" | grep -c . || true)
-    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t okssh)
     while IFS= read -r _a; do
         [ -z "$_a" ] && continue
         (
@@ -3338,7 +3356,7 @@ _EOWST
             [ "$_done" -ge "$_total" ] && break
             sleep 0.3
         done
-    } | whiptail --title "termio — Status" \
+    } | whiptail --title "okssh — Status" \
         --gauge "Testing $_total aliases in parallel (timeout: ${_timeout}s)..." 7 60 0 || true
     wait
     _txt=$(
@@ -3360,7 +3378,7 @@ _EOWST
         done
     )
     rm -rf "$_tmpdir"
-    wt_scrollmsg "termio — Status Dashboard" "$_txt"
+    wt_scrollmsg "okssh — Status Dashboard" "$_txt"
 }
 
 # Whiptail audit wrapper
@@ -3373,7 +3391,7 @@ wt_audit() {
     fi
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
-        wt_msg "No aliases configured.\n\nAdd one with: termio add"
+        wt_msg "No aliases configured.\n\nAdd one with: okssh add"
         return 0
     fi
     _txt=$(
@@ -3407,7 +3425,7 @@ wt_audit() {
             fi
         done
     )
-    wt_scrollmsg "termio — Key Age Audit" "$_txt"
+    wt_scrollmsg "okssh — Key Age Audit" "$_txt"
 }
 
 wt_show_info() {
@@ -3441,7 +3459,7 @@ wt_show_info() {
         fi
         printf '\n%-14s ssh %s\n' "Connect:" "$_alias"
     )
-    whiptail --title "termio — Info: $_alias" \
+    whiptail --title "okssh — Info: $_alias" \
         --scrolltext --msgbox "$_txt" "$TH" "$TW"
 }
 
@@ -3450,7 +3468,7 @@ wt_test_alias() {
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
     _port=$(get_field "$_alias" "Port"); [ -z "$_port" ] && _port="22"
-    whiptail --title "termio — Test" \
+    whiptail --title "okssh — Test" \
         --infobox "Testing $_alias (${_user}@${_host}:${_port})..." 5 60
     _start=$(date +%s 2>/dev/null || printf '0')
     if ssh -F "$CONFIG_FILE" \
@@ -3463,7 +3481,7 @@ wt_test_alias() {
         wt_msg "Connection successful\n\n  Alias:  $_alias\n  Host:   ${_user}@${_host}:${_port}\n  Time:   ${_elapsed}s"
     else
         _code=$?
-        wt_msg "Connection FAILED (exit code $_code)\n\n  Alias: $_alias\n  Host:  ${_user}@${_host}:${_port}\n\nPossible causes:\n  - Host unreachable or firewall blocking port $_port\n  - Key not accepted — try: termio rotate $_alias\n  - Wrong details — check alias info"
+        wt_msg "Connection FAILED (exit code $_code)\n\n  Alias: $_alias\n  Host:  ${_user}@${_host}:${_port}\n\nPossible causes:\n  - Host unreachable or firewall blocking port $_port\n  - Key not accepted — try: okssh rotate $_alias\n  - Wrong details — check alias info"
     fi
 }
 
@@ -3486,7 +3504,7 @@ wt_snip_list() {
             printf '%-22s %-5s %s\n' "$_n" "$_sf" "$_d"
         done
     )
-    whiptail --title "termio — Snippets" \
+    whiptail --title "okssh — Snippets" \
         --scrolltext --msgbox "$_txt" "$TH" "$TW"
 }
 
@@ -3504,7 +3522,7 @@ wt_show_snip_info() {
         printf '\n%-12s\n' "Command:"
         printf '  %s\n' "$_cmd"
     )
-    whiptail --title "termio — Snippet: $_name" \
+    whiptail --title "okssh — Snippet: $_name" \
         --scrolltext --msgbox "$_txt" "$TH" "$TW"
 }
 
@@ -3528,7 +3546,7 @@ wt_sync_status() {
             [ -d "$_sync_path" ] \
                 && printf '%-16s reachable\n'     "Folder status:" \
                 || printf '%-16s NOT reachable\n' "Folder status:"
-            _marker="$_sync_path/.termio-sync"
+            _marker="$_sync_path/.okssh-sync"
             if [ -f "$_marker" ]; then
                 _init_date=$(awk -F'=' '/^init_date=/{print $2}' "$_marker")
                 _init_host=$(awk -F'=' '/^init_host=/{print $2}' "$_marker")
@@ -3564,7 +3582,7 @@ wt_sync_status() {
             fi
         fi
     )
-    whiptail --title "termio — Sync Status" \
+    whiptail --title "okssh — Sync Status" \
         --scrolltext --msgbox "$_txt" "$TH" "$TW"
 }
 
@@ -3602,7 +3620,7 @@ wt_sync_keys_status() {
             printf '\nUse Enable in the key sync menu to opt in.\n'
         fi
     )
-    whiptail --title "termio — Key Sync Status" \
+    whiptail --title "okssh — Key Sync Status" \
         --scrolltext --msgbox "$_txt" "$TH" "$TW"
 }
 
@@ -3618,7 +3636,7 @@ wt_sync_keys_enable() {
     if [ "$_ks" = "enabled" ]; then
         wt_msg "Key sync is already enabled.\n\nUse Update to rebuild the archive."; return 0
     fi
-    whiptail --title "termio — Encrypted Key Sync" --scrolltext --msgbox \
+    whiptail --title "okssh — Encrypted Key Sync" --scrolltext --msgbox \
 "Encrypted Key Sync — Opt In
 
 This feature stores your private SSH keys in an AES-256
@@ -3628,7 +3646,7 @@ What this means:
   - Your keys travel with your sync provider
   - Security depends on your passphrase strength AND
     your sync provider's security
-  - The passphrase is NEVER stored anywhere by termio
+  - The passphrase is NEVER stored anywhere by okssh
   - You will be prompted each time keys are archived
     or restored
   - AES-256-CBC with PBKDF2 (600,000 iterations)
@@ -3651,7 +3669,7 @@ Press OK to continue to the confirmation prompt." "$TH" "$TW"
 
 _wt_snip_menu() {
     while true; do
-        _sc=$(whiptail --title "termio — Snippets" \
+        _sc=$(whiptail --title "okssh — Snippets" \
             --cancel-button "Back" \
             --menu "Reusable remote commands:" "$TH" "$TW" 6 \
             "list" "  List all snippets" \
@@ -3688,7 +3706,7 @@ cmd_connect() {
         esac
         shift
     done
-    [ -z "$_alias" ] && die "Usage: termio connect <alias> [--agent] [--sshpass] [--profile|-P]"
+    [ -z "$_alias" ] && die "Usage: okssh connect <alias> [--agent] [--sshpass] [--profile|-P]"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
 
     # Apply per-alias preferences (flags override)
@@ -3702,7 +3720,7 @@ cmd_connect() {
 
     printf '\n'
     info "Connecting to ${C_BOLD}$_alias${C_RESET} (${_user}@${_host}:${_port})"
-    printf "  Press ${C_BOLD}Ctrl+D${C_RESET} or type ${C_BOLD}exit${C_RESET} to return to termio.\n\n"
+    printf "  Press ${C_BOLD}Ctrl+D${C_RESET} or type ${C_BOLD}exit${C_RESET} to return to okssh.\n\n"
     pref_set "last_connect_${_alias}" "$(date '+%Y-%m-%d %H:%M')"
 
     # Auto-bootstrap: if enabled and alias not yet bootstrapped, prompt once
@@ -3747,7 +3765,7 @@ cmd_connect() {
         unset _sp SSHPASS
     elif [ "$_use_sshpass" -eq 2 ]; then
         command -v sshpass >/dev/null 2>&1 || { warn "sshpass not installed."; set -e; return 1; }
-        warn "Password auth via sshpass — consider key-based auth: termio rotate $_alias"
+        warn "Password auth via sshpass — consider key-based auth: okssh rotate $_alias"
         _sp=$(_base64_decode "$_stored_pw")
         unset _stored_pw
         SSHPASS="$_sp" sshpass -e ssh -F "$CONFIG_FILE" "$_alias"
@@ -3778,8 +3796,8 @@ cmd_connect() {
 cmd_run() {
     _alias="$1"; shift
     _cmd="$*"
-    [ -z "$_alias" ] && die "Usage: termio run <alias> <command>"
-    [ -z "$_cmd"   ] && die "Usage: termio run <alias> <command>"
+    [ -z "$_alias" ] && die "Usage: okssh run <alias> <command>"
+    [ -z "$_cmd"   ] && die "Usage: okssh run <alias> <command>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
@@ -3805,7 +3823,7 @@ cmd_run() {
 cmd_copy() {
     _src="${1:-}"; _dst="${2:-}"
     { [ -z "$_src" ] || [ -z "$_dst" ]; } && \
-        die "Usage: termio copy <alias>:/remote/path /local/path\n       termio copy /local/path <alias>:/remote/path"
+        die "Usage: okssh copy <alias>:/remote/path /local/path\n       okssh copy /local/path <alias>:/remote/path"
     command -v sftp >/dev/null 2>&1 || die "sftp not found — install openssh-client"
     _alias=""
     case "$_src" in *:*) _alias="${_src%%:*}" ;; esac
@@ -3829,7 +3847,7 @@ cmd_copy() {
         *)
             # Upload: local → remote (sftp batch mode)
             _remote_path="${_dst#*:}"
-            _batch=$(mktemp 2>/dev/null || mktemp -t termio)
+            _batch=$(mktemp 2>/dev/null || mktemp -t okssh)
             printf 'put -r "%s" "%s"\n' "$_src" "$_remote_path" > "$_batch"
             sftp -F "$CONFIG_FILE" -b "$_batch" "$_alias"
             _rc=$?
@@ -3859,7 +3877,7 @@ cmd_copy_wizard() {
 
     # Step 2: direction
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
-        _cw_dir=$(whiptail --title "termio — Copy" \
+        _cw_dir=$(whiptail --title "okssh — Copy" \
             --menu "Direction for ${_cw_alias}:" "$TH" "$TW" 2 \
             "download" "  ↓  Copy from remote to local" \
             "upload"   "  ↑  Copy from local to remote" \
@@ -3908,7 +3926,7 @@ cmd_copy_wizard() {
 
 cmd_open() {
     _alias="${1:-}"
-    [ -z "$_alias" ] && die "Usage: termio open <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh open <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _host=$(get_field "$_alias" "HostName")
     _user=$(get_field "$_alias" "User")
@@ -3922,7 +3940,7 @@ cmd_open() {
 
 cmd_tag() {
     _alias="${1:-}"; _grp="${2:-}"
-    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: termio tag <alias> <group>"
+    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: okssh tag <alias> <group>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _cur_grp=$(get_comment "$_alias" "Group")
     if [ -n "$_cur_grp" ]; then
@@ -3947,7 +3965,7 @@ cmd_tag() {
 
 cmd_untag() {
     _alias="${1:-}"; _grp="${2:-}"
-    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: termio untag <alias> <group>"
+    [ -z "$_alias" ] || [ -z "$_grp" ] && die "Usage: okssh untag <alias> <group>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
     _cur_grp=$(get_comment "$_alias" "Group")
     if [ -z "$_cur_grp" ]; then
@@ -3973,10 +3991,10 @@ cmd_untag() {
 cmd_status() {
     _aliases=$(list_aliases)
     if [ -z "$_aliases" ]; then
-        printf '\n  No aliases configured. Add one with: termio add\n\n'; return 0
+        printf '\n  No aliases configured. Add one with: okssh add\n\n'; return 0
     fi
     _timeout=8
-    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t termio)
+    _tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t okssh)
     _total=$(printf '%s\n' "$_aliases" | grep -c . || true)
 
     # Launch parallel SSH probes with ms latency measurement
@@ -4067,7 +4085,7 @@ cmd_audit() {
     [ -z "$_threshold" ] && _threshold=90
     if [ "$_threshold" = "off" ]; then
         info "Key rotation auditing is globally disabled."
-        printf "  Re-enable: ${C_BOLD}termio prefer audit_threshold 90${C_RESET}\n\n"
+        printf "  Re-enable: ${C_BOLD}okssh prefer audit_threshold 90${C_RESET}\n\n"
         return 0
     fi
     _aliases=$(list_aliases)
@@ -4103,7 +4121,7 @@ cmd_audit() {
                 2>/dev/null | grep -q .; then
             printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%-18s${C_RESET} key >%s days old — " \
                 "$_a" "$_alias_thresh"
-            printf "rotate: ${C_DIM}termio rotate %s${C_RESET}%b\n" "$_a" "$_thresh_note"
+            printf "rotate: ${C_DIM}okssh rotate %s${C_RESET}%b\n" "$_a" "$_thresh_note"
             _flagged=$(( _flagged + 1 ))
         else
             printf "  ${C_GREEN}✔${C_RESET}  ${C_BOLD}%-18s${C_RESET} key is current%b\n" "$_a" "$_thresh_note"
@@ -4117,8 +4135,8 @@ _EOAUDIT
         success "All ${_ok} key(s) within the rotation window.$([ "$_skipped" -gt 0 ] && printf '  (%d skipped)' "$_skipped")"
     else
         warn "${_flagged} key(s) flagged for rotation  (${_ok} current$([ "$_skipped" -gt 0 ] && printf ', %d skipped' "$_skipped"))"
-        printf "  Set global threshold: ${C_BOLD}termio prefer audit_threshold <days>${C_RESET}\n"
-        printf "  Set per-host:         ${C_BOLD}termio prefer <alias> audit_threshold <days>${C_RESET}\n"
+        printf "  Set global threshold: ${C_BOLD}okssh prefer audit_threshold <days>${C_RESET}\n"
+        printf "  Set per-host:         ${C_BOLD}okssh prefer <alias> audit_threshold <days>${C_RESET}\n"
     fi
     printf '\n'
 }
@@ -4167,12 +4185,12 @@ cmd_log() {
 
 cmd_wake() {
     _alias="${1:-}"
-    [ -z "$_alias" ] && die "Usage: termio wake <alias>"
+    [ -z "$_alias" ] && die "Usage: okssh wake <alias>"
     alias_exists "$_alias" || die "Alias \"$_alias\" not found."
 
     _mac=$(pref_get "wol_mac_${_alias}")
     if [ -z "$_mac" ]; then
-        die "No MAC address stored for \"$_alias\".\nSet one with: termio prefer $_alias wol <MAC>"
+        die "No MAC address stored for \"$_alias\".\nSet one with: okssh prefer $_alias wol <MAC>"
     fi
 
     _host=$(get_field "$_alias" "HostName")
@@ -4202,12 +4220,12 @@ PYEOF
 
 cmd_diff() {
     _sync_path=$(pref_get "sync_path")
-    [ -z "$_sync_path" ] && die "Sync is not configured. Run: termio sync init"
+    [ -z "$_sync_path" ] && die "Sync is not configured. Run: okssh sync init"
     [ -d "$_sync_path" ]  || die "Sync folder not reachable: $_sync_path"
     _remote_export="$_sync_path/aliases-export.txt"
     [ -f "$_remote_export" ] || die "No sync export found at: $_remote_export"
 
-    _local_tmp=$(mktemp 2>/dev/null || mktemp -t termio)
+    _local_tmp=$(mktemp 2>/dev/null || mktemp -t okssh)
     cmd_export "$_local_tmp" >/dev/null 2>&1
 
     printf '\n'
@@ -4298,7 +4316,7 @@ cmd_tunnel() {
                 shift
             done
             { [ -z "$_tname" ] || [ -z "$_talias" ] || [ -z "$_tfwd" ]; } && \
-                die "Usage: termio tunnel add <name> <alias> <spec> [--type local|remote|socks]"
+                die "Usage: okssh tunnel add <name> <alias> <spec> [--type local|remote|socks]"
             alias_exists "$_talias" || die "Alias \"$_talias\" not found."
             case "$_ttype" in
                 local|remote)
@@ -4321,11 +4339,11 @@ cmd_tunnel() {
             fi
             tunnel_write "$_tname" "$_talias" "$_tfwd" "$_ttype"
             success "Tunnel \"$_tname\" saved  (type: ${_ttype})."
-            printf "  Start with: ${C_BOLD}termio tunnel start %s${C_RESET}\n\n" "$_tname"
+            printf "  Start with: ${C_BOLD}okssh tunnel start %s${C_RESET}\n\n" "$_tname"
             ;;
 
         start)
-            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel start <name>"
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: okssh tunnel start <name>"
             tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
             if tunnel_is_running "$_tname"; then
                 info "Tunnel \"$_tname\" is already running."; return 0
@@ -4361,7 +4379,7 @@ cmd_tunnel() {
             set -e
             if [ "$_rc" -eq 0 ]; then
                 success "Tunnel started."
-                printf "  Stop with:  ${C_BOLD}termio tunnel stop %s${C_RESET}\n\n" "$_tname"
+                printf "  Stop with:  ${C_BOLD}okssh tunnel stop %s${C_RESET}\n\n" "$_tname"
             else
                 rm -f "$_sock"
                 warn "Tunnel failed to start — check alias and forward spec."
@@ -4370,7 +4388,7 @@ cmd_tunnel() {
             ;;
 
         stop)
-            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel stop <name>"
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: okssh tunnel stop <name>"
             tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
             if ! tunnel_is_running "$_tname"; then
                 info "Tunnel \"$_tname\" is not running."; return 0
@@ -4385,7 +4403,7 @@ cmd_tunnel() {
             ;;
 
         rm|remove)
-            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: termio tunnel rm <name>"
+            _tname="${2:-}"; [ -z "$_tname" ] && die "Usage: okssh tunnel rm <name>"
             tunnel_exists "$_tname" || die "Tunnel \"$_tname\" not found."
             printf '\n'
             warn "About to remove tunnel \"${C_BOLD}$_tname${C_RESET}\""
@@ -4405,7 +4423,7 @@ cmd_tunnel() {
             _tnames=$(tunnel_list_names)
             if [ -z "$_tnames" ]; then
                 printf '\n  No tunnels configured.\n'
-                printf "  Add one: ${C_BOLD}termio tunnel add <name> <alias> <spec> [--type local|remote|socks]${C_RESET}\n\n"
+                printf "  Add one: ${C_BOLD}okssh tunnel add <name> <alias> <spec> [--type local|remote|socks]${C_RESET}\n\n"
                 return 0
             fi
             printf '\n'
@@ -4502,7 +4520,7 @@ cmd_agent() {
             ;;
 
         rm|remove)
-            [ -z "$_alias" ] && die "Usage: termio agent rm <alias>"
+            [ -z "$_alias" ] && die "Usage: okssh agent rm <alias>"
             alias_exists "$_alias" || die "Alias \"$_alias\" not found."
             _key=$(get_field "$_alias" "IdentityFile")
             [ -z "$_key" ] && die "No key configured for alias \"$_alias\""
@@ -4533,7 +4551,7 @@ cmd_agent() {
 # Whiptail tunnel submenu
 _wt_tunnel_menu() {
     while true; do
-        _tc=$(whiptail --title "termio — Tunnels" \
+        _tc=$(whiptail --title "okssh — Tunnels" \
             --cancel-button "Back" \
             --menu "SSH tunnel management" "$TH" "$TW" 5 \
             "status" "  List / status all tunnels" \
@@ -4544,13 +4562,13 @@ _wt_tunnel_menu() {
             3>&1 1>&2 2>&3) || return 0
         case "$_tc" in
             status)
-                wt_scrollmsg "termio — Tunnel Status" "$(_wt_tunnel_status_text)" ;;
+                wt_scrollmsg "okssh — Tunnel Status" "$(_wt_tunnel_status_text)" ;;
             add)
                 wt_input "Tunnel name" ""; [ -z "$_PROMPT_RESULT" ] && continue
                 _ttn="$_PROMPT_RESULT"
                 wt_pick_alias "Select SSH alias"; [ -z "$SELECTED_ALIAS" ] && continue
                 _tta="$SELECTED_ALIAS"
-                _ttype=$(whiptail --title "termio — Tunnel Type" \
+                _ttype=$(whiptail --title "okssh — Tunnel Type" \
                     --menu "Forward type:" "$TH" "$TW" 3 \
                     "local"  "  -L  Local port forward (default)" \
                     "remote" "  -R  Remote port forward (expose local to server)" \
@@ -4564,27 +4582,27 @@ _wt_tunnel_menu() {
                 esac
                 if [ -n "$_PROMPT_RESULT" ]; then
                     cmd_tunnel add "$_ttn" "$_tta" "$_PROMPT_RESULT" --type "$_ttype"
-                    wt_scrollmsg "termio — Tunnels" "$(_wt_tunnel_status_text)"
+                    wt_scrollmsg "okssh — Tunnels" "$(_wt_tunnel_status_text)"
                 fi ;;
             start)
                 wt_input "Tunnel name to start" ""; [ -z "$_PROMPT_RESULT" ] && continue
                 _ttn="$_PROMPT_RESULT"
-                whiptail --title "termio — Tunnels" \
+                whiptail --title "okssh — Tunnels" \
                     --infobox "Starting tunnel \"$_ttn\"..." 5 50
-                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t okssh)
                 cmd_tunnel start "$_ttn" >"$_tmpout" 2>&1
                 wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
                 rm -f "$_tmpout" ;;
             stop)
                 wt_input "Tunnel name to stop" ""; [ -z "$_PROMPT_RESULT" ] && continue
-                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t okssh)
                 cmd_tunnel stop "$_PROMPT_RESULT" >"$_tmpout" 2>&1
                 wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
                 rm -f "$_tmpout" ;;
             rm)
                 wt_input "Tunnel name to remove" ""; [ -z "$_PROMPT_RESULT" ] && continue
                 cmd_tunnel rm "$_PROMPT_RESULT"
-                wt_scrollmsg "termio — Tunnels" "$(_wt_tunnel_status_text)" ;;
+                wt_scrollmsg "okssh — Tunnels" "$(_wt_tunnel_status_text)" ;;
             "") return 0 ;;
         esac
     done
@@ -4593,7 +4611,7 @@ _wt_tunnel_menu() {
 # Whiptail agent submenu
 _wt_agent_menu() {
     while true; do
-        _ac=$(whiptail --title "termio — SSH Agent" \
+        _ac=$(whiptail --title "okssh — SSH Agent" \
             --cancel-button "Back" \
             --menu "SSH agent key management" "$TH" "$TW" 4 \
             "list"  "  List alias keys loaded in agent" \
@@ -4603,17 +4621,17 @@ _wt_agent_menu() {
             3>&1 1>&2 2>&3) || return 0
         case "$_ac" in
             list)
-                wt_scrollmsg "termio — SSH Agent" "$(_wt_agent_list_text)" ;;
+                wt_scrollmsg "okssh — SSH Agent" "$(_wt_agent_list_text)" ;;
             add)
                 wt_input "Alias name (blank = add all)" ""
-                _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                _tmpout=$(mktemp 2>/dev/null || mktemp -t okssh)
                 cmd_agent add "$_PROMPT_RESULT" >"$_tmpout" 2>&1
                 wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
                 rm -f "$_tmpout" ;;
             rm)
                 wt_pick_alias "Select alias to remove key from agent:"
                 if [ -n "$SELECTED_ALIAS" ]; then
-                    _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                    _tmpout=$(mktemp 2>/dev/null || mktemp -t okssh)
                     cmd_agent rm "$SELECTED_ALIAS" >"$_tmpout" 2>&1
                     wt_msg "$(_strip_colors "$(cat "$_tmpout")")"
                     rm -f "$_tmpout"
@@ -4639,7 +4657,7 @@ _wt_sync_menu() {
         && printf 'Active: %s' "$_sync_path" \
         || printf '%s' "${_sync_path:+OFFLINE: }${_sync_path:-not configured}")"
 
-    _sc=$(whiptail --title "termio — Sync" \
+    _sc=$(whiptail --title "okssh — Sync" \
         --cancel-button "Back" \
         --menu "Sync: $_sync_status" "$TH" "$TW" 4 \
         "status"  "  Show sync status" \
@@ -4652,7 +4670,7 @@ _wt_sync_menu() {
         init)   cmd_sync_init ;;
         detach) cmd_sync_detach ;;
         keys)
-            _kc=$(whiptail --title "termio — Key Sync" \
+            _kc=$(whiptail --title "okssh — Key Sync" \
                 --menu "Encrypted key archive (AES-256)" "$TH" "$TW" 5 \
                 "status"  "  Key sync status" \
                 "enable"  "  Enable encrypted key sync" \
@@ -4675,7 +4693,7 @@ _wt_prefs_menu() {
         _cur_ui=$(pref_get "ui")
         _cur_thresh=$(pref_get "audit_threshold"); [ -z "$_cur_thresh" ] && _cur_thresh=90
         _cur_ktype=$(pref_get "key_type"); [ -z "$_cur_ktype" ] && _cur_ktype=ed25519
-        _pc=$(whiptail --title "termio — Preferences" \
+        _pc=$(whiptail --title "okssh — Preferences" \
             --cancel-button "Back" \
             --menu "" 13 64 3 \
             "ui"        "  UI mode: ${_cur_ui:-auto-detect}" \
@@ -4692,7 +4710,7 @@ _wt_prefs_menu() {
 
 _wt_prefs_ui_menu() {
     _cur_pref=$(pref_get "ui")
-    _pc=$(whiptail --title "termio — UI Mode" \
+    _pc=$(whiptail --title "okssh — UI Mode" \
         --cancel-button "Back" \
         --menu "Current: ${_cur_pref:-auto-detect}  |  whiptail installed: $([ "$_WHIPTAIL_INSTALLED" -eq 1 ] && printf 'yes' || printf 'no')" \
         12 64 3 \
@@ -4709,7 +4727,7 @@ _wt_prefs_ui_menu() {
 
 _wt_prefs_threshold() {
     _cur=$(pref_get "audit_threshold"); [ -z "$_cur" ] && _cur=90
-    _pt=$(whiptail --title "termio — Key Rotation Threshold" \
+    _pt=$(whiptail --title "okssh — Key Rotation Threshold" \
         --cancel-button "Back" \
         --menu "Current: ${_cur}" \
         12 64 3 \
@@ -4739,7 +4757,7 @@ _wt_prefs_threshold() {
 
 _wt_prefs_keytype() {
     _cur=$(pref_get "key_type"); [ -z "$_cur" ] && _cur=ed25519
-    _kt=$(whiptail --title "termio — Default Key Type" \
+    _kt=$(whiptail --title "okssh — Default Key Type" \
         --cancel-button "Back" \
         --menu "Current: $_cur" \
         11 48 3 \
@@ -4772,10 +4790,10 @@ MENU ITEMS
             reachability dashboard.
 
   run       One-off remote command without saving a snippet.
-            Example: termio run myserver "df -h"
+            Example: okssh run myserver "df -h"
 
   copy      Copy files to/from a remote alias using sftp.
-            Example: termio copy myserver:/etc/hosts /tmp/
+            Example: okssh copy myserver:/etc/hosts /tmp/
 
   edit      Change any saved field for an alias.
 
@@ -4784,7 +4802,7 @@ MENU ITEMS
 
   audit     Check all alias keys for age. Flags keys older than
             the configured threshold (default: 90 days).
-            Set threshold: termio prefer audit_threshold <N>
+            Set threshold: okssh prefer audit_threshold <N>
 
   rm        Remove an alias and optionally delete its key file.
 
@@ -4797,14 +4815,14 @@ MENU ITEMS
             and optional sudo. Password prompted, never stored.
 
   tunnel    Named SSH port-forward profiles.
-            Add: termio tunnel add db-tun myserver 5432:localhost:5432
-            Then: termio tunnel start db-tun / stop / status
+            Add: okssh tunnel add db-tun myserver 5432:localhost:5432
+            Then: okssh tunnel start db-tun / stop / status
 
   agent     Load or inspect alias keys in ssh-agent.
-            termio agent list  — show which alias keys are loaded
-            termio agent add [alias]  — load one or all keys
-            termio agent rm <alias>   — unload a specific key
-            termio agent clear        — remove all keys
+            okssh agent list  — show which alias keys are loaded
+            okssh agent add [alias]  — load one or all keys
+            okssh agent rm <alias>   — unload a specific key
+            okssh agent clear        — remove all keys
 
   sync      Mirror aliases, snippets, and preferences to any
             folder — NAS, cloud drive, or USB.
@@ -4812,9 +4830,9 @@ MENU ITEMS
             private keys. Passphrase is never stored anywhere.
 
   prefs     Switch between TUI (whiptail) and plain CLI mode.
-            Set default key type: termio prefer key_type ed25519
+            Set default key type: okssh prefer key_type ed25519
 
-  quit      Exit termio.
+  quit      Exit okssh.
 
 KEYBOARD SHORTCUTS
 
@@ -4839,7 +4857,7 @@ NOTES
 
 HELPEOF
 )
-    whiptail --title "termio v${TERMIO_VERSION} — Help" \
+    whiptail --title "okssh v${OKSSH_VERSION} — Help" \
         --scrolltext --msgbox "$_ht" "$TH" "$TW"
 }
 
@@ -4847,11 +4865,11 @@ HELPEOF
 _wt_title() {
     _sp=$(pref_get "sync_path")
     if [ -n "$_sp" ] && [ -d "$_sp" ]; then
-        printf 'termio v%s  [Sync: ✔]' "$TERMIO_VERSION"
+        printf 'okssh v%s  [Sync: ✔]' "$OKSSH_VERSION"
     elif [ -n "$_sp" ]; then
-        printf 'termio v%s  [Sync: OFFLINE]' "$TERMIO_VERSION"
+        printf 'okssh v%s  [Sync: OFFLINE]' "$OKSSH_VERSION"
     else
-        printf 'termio v%s' "$TERMIO_VERSION"
+        printf 'okssh v%s' "$OKSSH_VERSION"
     fi
 }
 
@@ -4913,21 +4931,21 @@ _wt_manage_menu() {
                         done
                     fi
                 )
-                wt_scrollmsg "termio — SSH Config Backups" "$_btxt"
+                wt_scrollmsg "okssh — SSH Config Backups" "$_btxt"
                 wt_input "Restore backup number (blank = cancel)" ""
                 [ -n "$_PROMPT_RESULT" ] && cmd_backup restore "$_PROMPT_RESULT" ;;
             rm)
                 wt_pick_alias "Select alias to remove:"
                 [ -n "$SELECTED_ALIAS" ] && cmd_remove "$SELECTED_ALIAS" ;;
             export)
-                _def="$HOME/termio-export-$(date +%Y%m%d).txt"
+                _def="$HOME/okssh-export-$(date +%Y%m%d).txt"
                 wt_input "Export file path" "$_def"
                 if [ -n "$_PROMPT_RESULT" ]; then
                     cmd_export "$_PROMPT_RESULT"
                     wt_msg "Aliases exported to:\n$_PROMPT_RESULT"
                 fi ;;
             import)
-                wt_input "Path to import file" "$HOME/termio-export.txt"
+                wt_input "Path to import file" "$HOME/okssh-export.txt"
                 [ -n "$_PROMPT_RESULT" ] && cmd_import "$_PROMPT_RESULT" ;;
             "") return 0 ;;
         esac
@@ -4962,7 +4980,7 @@ _wt_bootstrap_menu() {
                 [ -n "$SELECTED_ALIAS" ] && cmd_bootstrap remove "$SELECTED_ALIAS" ;;
             list)
                 _bltxt=$(cmd_bootstrap list 2>&1)
-                wt_scrollmsg "termio — Bootstrapped Aliases" "$_bltxt" ;;
+                wt_scrollmsg "okssh — Bootstrapped Aliases" "$_bltxt" ;;
             prefs)
                 _bpchoice=$(whiptail --title "$(_wt_title) — Bootstrap Prefs" \
                     --menu "Bootstrap preferences:" "$TH" "$TW" 2 \
@@ -5004,7 +5022,7 @@ _startup_audit_warn() {
 $(printf '%s\n' "$_aliases")
 _EOSW
     if [ "$_flagged" -gt 0 ]; then
-        printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%d key(s) need rotation${C_RESET}  ${C_DIM}(run: termio audit)${C_RESET}\n\n" \
+        printf "  ${C_YELLOW}⚠${C_RESET}  ${C_BOLD}%d key(s) need rotation${C_RESET}  ${C_DIM}(run: okssh audit)${C_RESET}\n\n" \
             "$_flagged"
     fi
 }
@@ -5014,7 +5032,7 @@ interactive_menu() {
     if [ "$HAS_WHIPTAIL" -eq 1 ]; then
         # Show audit warning as infobox briefly if keys need rotation
         _startup_audit_warn 2>/dev/null | grep -q 'need rotation' && \
-            whiptail --title "termio — Key Alert" \
+            whiptail --title "okssh — Key Alert" \
                 --infobox "⚠  Some SSH keys need rotation.\n\nGo to Manage ▶ Audit to review." \
                 7 50 || true
         while true; do
@@ -5050,7 +5068,7 @@ interactive_menu() {
                         wt_show_info "$SELECTED_ALIAS"
                     fi ;;
                 test)
-                    _tc=$(whiptail --title "termio v${TERMIO_VERSION}" \
+                    _tc=$(whiptail --title "okssh v${OKSSH_VERSION}" \
                         --menu "Test connections:" "$TH" "$TW" 2 \
                         "one" "  Test a single alias" \
                         "all" "  Test all connections" \
@@ -5069,9 +5087,9 @@ interactive_menu() {
                         if [ -n "$_PROMPT_RESULT" ]; then
                             _wt_run_alias="$SELECTED_ALIAS"
                             _wt_run_cmd="$_PROMPT_RESULT"
-                            whiptail --title "termio — Run" \
+                            whiptail --title "okssh — Run" \
                                 --infobox "Running on ${_wt_run_alias}..." 5 50
-                            _tmpout=$(mktemp 2>/dev/null || mktemp -t termio)
+                            _tmpout=$(mktemp 2>/dev/null || mktemp -t okssh)
                             set +e
                             ssh -F "$CONFIG_FILE" \
                                 -o BatchMode=yes \
@@ -5084,7 +5102,7 @@ interactive_menu() {
                             _wt_hdr="$(printf 'Command: %s\nAlias:   %s  (exit: %s)\n%s\n' \
                                 "$_wt_run_cmd" "$_wt_run_alias" "$_wt_rc" \
                                 "──────────────────────────────────────")"
-                            wt_scrollmsg "termio — Run: $_wt_run_alias" \
+                            wt_scrollmsg "okssh — Run: $_wt_run_alias" \
                                 "$(printf '%s\n%s' "$_wt_hdr" "$_wt_out")"
                         fi
                     fi ;;
@@ -5170,7 +5188,7 @@ interactive_menu() {
                     cli_prompt "Alias to remove" ""
                     [ -n "$_PROMPT_RESULT" ] && cmd_remove "$_PROMPT_RESULT" ;;
                 13|export)
-                    cli_prompt "Output file" "$HOME/termio-export-$(date +%Y%m%d).txt"
+                    cli_prompt "Output file" "$HOME/okssh-export-$(date +%Y%m%d).txt"
                     cmd_export "$_PROMPT_RESULT" ;;
                 14|import)
                     cli_prompt "Import file path" ""
@@ -5403,57 +5421,57 @@ interactive_menu() {
 cmd_help() {
     print_banner
     printf "  ${C_BOLD}COMMANDS${C_RESET}\n"
-    printf "    %-36s %s\n" "termio [-v]"                    "Interactive menu"
-    printf "    %-36s %s\n" "termio [-v] add"                "Add a new SSH alias"
-    printf "    %-36s %s\n" "termio [-v] connect <alias>"    "Connect to a saved alias"
-    printf "    %-36s %s\n" "termio [-v] ls|list"            "List all aliases"
-    printf "    %-36s %s\n" "termio [-v] info <alias>"       "Full details + fingerprint"
-    printf "    %-36s %s\n" "termio [-v] test <alias>"       "Test SSH connectivity"
-    printf "    %-36s %s\n" "termio [-v] edit <alias>"       "Edit an alias"
-    printf "    %-36s %s\n" "termio [-v] rotate <alias>"     "Rotate SSH key"
-    printf "    %-36s %s\n" "termio [-v] rm <alias>"         "Remove alias (+ optional key delete)"
-    printf "    %-36s %s\n" "termio [-v] export [file]"      "Export aliases to portable file"
-    printf "    %-36s %s\n" "termio [-v] import <file>"      "Import aliases from export file"
-    printf "    %-36s %s\n" "termio [-v] run <alias> <cmd>"  "Run a one-off remote command"
-    printf "    %-36s %s\n" "termio [-v] copy <src> <dst>"   "Copy files via sftp (alias:/path)"
-    printf "    %-36s %s\n" "termio [-v] status"             "Test all connections (dashboard)"
-    printf "    %-36s %s\n" "termio [-v] audit"              "Audit SSH key ages"
-    printf "    %-36s %s\n" "termio       prefer"            "Show current preferences"
-    printf "    %-36s %s\n" "termio       prefer whiptail"   "Use TUI (installs if needed)"
-    printf "    %-36s %s\n" "termio       prefer cli"        "Use plain terminal always"
-    printf "    %-36s %s\n" "termio       prefer audit_threshold <N>" "Key rotation warning threshold"
-    printf "    %-36s %s\n" "termio       prefer key_type <type>" "Default key type (ed25519/rsa/ecdsa)"
-    printf "    %-36s %s\n" "termio [-v] sync"               "Show sync status"
-    printf "    %-36s %s\n" "termio [-v] sync init"          "Set up sync folder"
-    printf "    %-36s %s\n" "termio [-v] sync detach"        "Detach from sync"
-    printf "    %-36s %s\n" "termio [-v] sync keys"          "Key sync status"
-    printf "    %-36s %s\n" "termio [-v] sync keys enable"   "Opt in to encrypted key sync"
-    printf "    %-36s %s\n" "termio [-v] sync keys disable"  "Remove encrypted archive"
-    printf "    %-36s %s\n" "termio [-v] sync keys update"   "Rebuild key archive"
-    printf "    %-36s %s\n" "termio [-v] sync keys restore"  "Restore keys from archive"
-    printf "    %-36s %s\n" "termio [-v] snip"               "List all snippets"
-    printf "    %-36s %s\n" "termio [-v] snip add"           "Add a new snippet"
-    printf "    %-36s %s\n" "termio [-v] snip run <n>"       "Run snippet on host(s)"
-    printf "    %-36s %s\n" "termio [-v] snip run <n> --group <g>" "Run snippet on group"
-    printf "    %-36s %s\n" "termio [-v] snip info <n>"      "Show snippet details"
-    printf "    %-36s %s\n" "termio [-v] snip edit <n>"      "Edit a snippet"
-    printf "    %-36s %s\n" "termio [-v] snip rm <n>"        "Remove a snippet"
-    printf "    %-36s %s\n" "termio [-v] tunnel"             "List tunnels and status"
-    printf "    %-36s %s\n" "termio [-v] tunnel add <n> <alias> <fwd>" "Add a named tunnel"
-    printf "    %-36s %s\n" "termio [-v] tunnel start <name>" "Start a tunnel"
-    printf "    %-36s %s\n" "termio [-v] tunnel stop  <name>" "Stop a running tunnel"
-    printf "    %-36s %s\n" "termio [-v] tunnel rm    <name>" "Remove a tunnel"
-    printf "    %-36s %s\n" "termio [-v] agent"              "List alias keys in ssh-agent"
-    printf "    %-36s %s\n" "termio [-v] agent add [alias]"  "Load alias key(s) into agent"
-    printf "    %-36s %s\n" "termio [-v] agent rm  <alias>"  "Remove alias key from agent"
-    printf "    %-36s %s\n" "termio [-v] agent clear"        "Remove all keys from agent"
-    printf "    %-36s %s\n" "termio [-v] bootstrap <alias>"  "Install snippet widget on alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap update <alias>" "Sync snippets to alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap remove <alias>" "Remove snippet widget from alias"
-    printf "    %-36s %s\n" "termio [-v] bootstrap list"    "List aliases with snippet widget"
-    printf "    %-36s %s\n" "termio [-v] connect <alias> --profile" "Ephemeral session with profile active"
-    printf "    %-36s %s\n" "termio       version"           "Show version"
-    printf "    %-36s %s\n" "termio       help|--help|-h"    "Show this help"
+    printf "    %-36s %s\n" "okssh [-v]"                    "Interactive menu"
+    printf "    %-36s %s\n" "okssh [-v] add"                "Add a new SSH alias"
+    printf "    %-36s %s\n" "okssh [-v] connect <alias>"    "Connect to a saved alias"
+    printf "    %-36s %s\n" "okssh [-v] ls|list"            "List all aliases"
+    printf "    %-36s %s\n" "okssh [-v] info <alias>"       "Full details + fingerprint"
+    printf "    %-36s %s\n" "okssh [-v] test <alias>"       "Test SSH connectivity"
+    printf "    %-36s %s\n" "okssh [-v] edit <alias>"       "Edit an alias"
+    printf "    %-36s %s\n" "okssh [-v] rotate <alias>"     "Rotate SSH key"
+    printf "    %-36s %s\n" "okssh [-v] rm <alias>"         "Remove alias (+ optional key delete)"
+    printf "    %-36s %s\n" "okssh [-v] export [file]"      "Export aliases to portable file"
+    printf "    %-36s %s\n" "okssh [-v] import <file>"      "Import aliases from export file"
+    printf "    %-36s %s\n" "okssh [-v] run <alias> <cmd>"  "Run a one-off remote command"
+    printf "    %-36s %s\n" "okssh [-v] copy <src> <dst>"   "Copy files via sftp (alias:/path)"
+    printf "    %-36s %s\n" "okssh [-v] status"             "Test all connections (dashboard)"
+    printf "    %-36s %s\n" "okssh [-v] audit"              "Audit SSH key ages"
+    printf "    %-36s %s\n" "okssh       prefer"            "Show current preferences"
+    printf "    %-36s %s\n" "okssh       prefer whiptail"   "Use TUI (installs if needed)"
+    printf "    %-36s %s\n" "okssh       prefer cli"        "Use plain terminal always"
+    printf "    %-36s %s\n" "okssh       prefer audit_threshold <N>" "Key rotation warning threshold"
+    printf "    %-36s %s\n" "okssh       prefer key_type <type>" "Default key type (ed25519/rsa/ecdsa)"
+    printf "    %-36s %s\n" "okssh [-v] sync"               "Show sync status"
+    printf "    %-36s %s\n" "okssh [-v] sync init"          "Set up sync folder"
+    printf "    %-36s %s\n" "okssh [-v] sync detach"        "Detach from sync"
+    printf "    %-36s %s\n" "okssh [-v] sync keys"          "Key sync status"
+    printf "    %-36s %s\n" "okssh [-v] sync keys enable"   "Opt in to encrypted key sync"
+    printf "    %-36s %s\n" "okssh [-v] sync keys disable"  "Remove encrypted archive"
+    printf "    %-36s %s\n" "okssh [-v] sync keys update"   "Rebuild key archive"
+    printf "    %-36s %s\n" "okssh [-v] sync keys restore"  "Restore keys from archive"
+    printf "    %-36s %s\n" "okssh [-v] snip"               "List all snippets"
+    printf "    %-36s %s\n" "okssh [-v] snip add"           "Add a new snippet"
+    printf "    %-36s %s\n" "okssh [-v] snip run <n>"       "Run snippet on host(s)"
+    printf "    %-36s %s\n" "okssh [-v] snip run <n> --group <g>" "Run snippet on group"
+    printf "    %-36s %s\n" "okssh [-v] snip info <n>"      "Show snippet details"
+    printf "    %-36s %s\n" "okssh [-v] snip edit <n>"      "Edit a snippet"
+    printf "    %-36s %s\n" "okssh [-v] snip rm <n>"        "Remove a snippet"
+    printf "    %-36s %s\n" "okssh [-v] tunnel"             "List tunnels and status"
+    printf "    %-36s %s\n" "okssh [-v] tunnel add <n> <alias> <fwd>" "Add a named tunnel"
+    printf "    %-36s %s\n" "okssh [-v] tunnel start <name>" "Start a tunnel"
+    printf "    %-36s %s\n" "okssh [-v] tunnel stop  <name>" "Stop a running tunnel"
+    printf "    %-36s %s\n" "okssh [-v] tunnel rm    <name>" "Remove a tunnel"
+    printf "    %-36s %s\n" "okssh [-v] agent"              "List alias keys in ssh-agent"
+    printf "    %-36s %s\n" "okssh [-v] agent add [alias]"  "Load alias key(s) into agent"
+    printf "    %-36s %s\n" "okssh [-v] agent rm  <alias>"  "Remove alias key from agent"
+    printf "    %-36s %s\n" "okssh [-v] agent clear"        "Remove all keys from agent"
+    printf "    %-36s %s\n" "okssh [-v] bootstrap <alias>"  "Install snippet widget on alias"
+    printf "    %-36s %s\n" "okssh [-v] bootstrap update <alias>" "Sync snippets to alias"
+    printf "    %-36s %s\n" "okssh [-v] bootstrap remove <alias>" "Remove snippet widget from alias"
+    printf "    %-36s %s\n" "okssh [-v] bootstrap list"    "List aliases with snippet widget"
+    printf "    %-36s %s\n" "okssh [-v] connect <alias> --profile" "Ephemeral session with profile active"
+    printf "    %-36s %s\n" "okssh       version"           "Show version"
+    printf "    %-36s %s\n" "okssh       help|--help|-h"    "Show this help"
     printf '\n'
     printf "  ${C_BOLD}FLAGS${C_RESET}\n"
     printf "    -v | --verbose    Show background operations (sync, key gen, config writes)\n"
@@ -5462,7 +5480,7 @@ cmd_help() {
     printf "    • Per-alias keys: ed25519 (default), rsa-4096, or ecdsa-521\n"
     printf "    • Passwords never stored — used once then cleared from memory\n"
     printf "    • Jump / bastion host support via ProxyJump\n"
-    printf "    • Groups/tags — tag aliases and filter: termio ls --group homelab\n"
+    printf "    • Groups/tags — tag aliases and filter: okssh ls --group homelab\n"
     printf "    • Optional: note, ServerAliveInterval, ForwardAgent, LocalForward\n"
     printf "    • Export/import for machine migration\n"
     printf "    • Sync via any folder-based provider (Nextcloud, Syncthing, Drive…)\n"
@@ -5481,20 +5499,20 @@ cmd_help() {
     printf "    • agent — load/unload per-alias keys in ssh-agent\n"
     printf "    • Connection history tracked per alias (last seen in list/info)\n"
     printf "    • bootstrap — deploy Ctrl+X s snippet widget (zsh ZLE / bash readline) to remote\n"
-    printf "    • Tab completion for bash + zsh — source termio-completion\n"
-    printf "    • Config: ~/.config/termio/  |  Keys: ~/.ssh/id_<type>_<alias>\n"
+    printf "    • Tab completion for bash + zsh — source okssh-completion\n"
+    printf "    • Config: ~/.config/okssh/  |  Keys: ~/.ssh/id_<type>_<alias>\n"
     printf '\n'
     printf "  ${C_BOLD}OPTIONAL DEPS${C_RESET}\n"
     printf "    sshpass  — non-interactive key copy\n"
     printf "    openssl  — required for encrypted key sync\n"
-    printf "    whiptail — graphical TUI  (termio prefer whiptail to auto-install)\n"
+    printf "    whiptail — graphical TUI  (okssh prefer whiptail to auto-install)\n"
     printf "      Debian/Mint:  sudo apt install sshpass whiptail openssl\n"
     printf "      Fedora:       sudo dnf install sshpass newt openssl\n"
     printf "      Arch:         sudo pacman -S libnewt openssl\n"
     printf "      macOS:        brew install sshpass newt  (openssl pre-installed)\n"
     printf '\n'
     printf "  ${C_BOLD}INSTALL${C_RESET}\n"
-    printf "    chmod +x termio && sudo mv termio /usr/local/bin/termio\n"
+    printf "    chmod +x okssh && sudo mv okssh /usr/local/bin/okssh\n"
     printf '\n'
 }
 
@@ -5536,7 +5554,7 @@ case "${1:-}" in
     diff)              cmd_diff ;;
     wake)              cmd_wake   "${2:-}" ;;
     template)          shift; cmd_template "$@" ;;
-    version|--version) printf 'termio version %s\n' "$TERMIO_VERSION" ;;
+    version|--version) printf 'okssh version %s\n' "$OKSSH_VERSION" ;;
     help|--help|-h)    cmd_help ;;
-    *)                 die "Unknown command: '$1'  (try: termio help)" ;;
+    *)                 die "Unknown command: '$1'  (try: okssh help)" ;;
 esac

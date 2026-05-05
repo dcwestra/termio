@@ -1,33 +1,33 @@
 #!/usr/bin/env sh
-# termio — tab completion for bash and zsh
+# okssh — tab completion for bash and zsh
 #
 # INSTALL (bash):
-#   Option 1 (user):   echo '. /path/to/termio-completion' >> ~/.bashrc
-#   Option 2 (system): sudo cp termio-completion /etc/bash_completion.d/termio
+#   Option 1 (user):   echo '. /path/to/okssh-completion' >> ~/.bashrc
+#   Option 2 (system): sudo cp okssh-completion /etc/bash_completion.d/okssh
 #
 # INSTALL (zsh):
-#   Option 1 (source): echo '. /path/to/termio-completion' >> ~/.zshrc
-#   Option 2 (fpath):  cp termio-completion ~/.zsh/completions/_termio
+#   Option 1 (source): echo '. /path/to/okssh-completion' >> ~/.zshrc
+#   Option 2 (fpath):  cp okssh-completion ~/.zsh/completions/_okssh
 #                      (the directory must be in your $fpath)
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-_termio_aliases() {
+_okssh_aliases() {
     grep '^Host ' "${HOME}/.ssh/config" 2>/dev/null \
         | awk '{print $2}' | grep -v '^\*$'
 }
 
-_termio_snippets() {
+_okssh_snippets() {
     awk '/^\[snippet\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
-        "${HOME}/.config/termio/snippets" 2>/dev/null
+        "${HOME}/.config/okssh/snippets" 2>/dev/null
 }
 
-_termio_tunnels() {
+_okssh_tunnels() {
     awk '/^\[tunnel\]/{found=0} /^name=/{if(!found){print substr($0,6); found=1}}' \
-        "${HOME}/.config/termio/tunnels" 2>/dev/null
+        "${HOME}/.config/okssh/tunnels" 2>/dev/null
 }
 
-_termio_groups() {
+_okssh_groups() {
     grep '# Group:' "${HOME}/.ssh/config" 2>/dev/null \
         | sed 's/.*# Group: *//' \
         | tr ',' '\n' | tr -d ' ' | sort -u
@@ -37,7 +37,7 @@ _termio_groups() {
 
 if [ -n "${BASH_VERSION:-}" ]; then
 
-_termio_complete() {
+_okssh_complete() {
     local cur prev cword
     local words=("${COMP_WORDS[@]}")
     cword=$COMP_CWORD
@@ -65,13 +65,13 @@ _termio_complete() {
         2)
             case "$subcmd" in
                 connect)
-                    COMPREPLY=($(compgen -W "$(_termio_aliases) --agent --sshpass" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_okssh_aliases) --agent --sshpass" -- "$cur"))
                     return 0 ;;
                 info|test|edit|rotate|rm|remove)
-                    COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_okssh_aliases)" -- "$cur"))
                     return 0 ;;
                 run)
-                    COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$(_okssh_aliases)" -- "$cur"))
                     return 0 ;;
                 ls|list)
                     COMPREPLY=($(compgen -W "--group -g" -- "$cur"))
@@ -89,7 +89,7 @@ _termio_complete() {
                     COMPREPLY=($(compgen -W "$agent_subcmds" -- "$cur"))
                     return 0 ;;
                 prefer)
-                    COMPREPLY=($(compgen -W "$pref_keys $(_termio_aliases)" -- "$cur"))
+                    COMPREPLY=($(compgen -W "$pref_keys $(_okssh_aliases)" -- "$cur"))
                     return 0 ;;
             esac ;;
         3)
@@ -101,14 +101,14 @@ _termio_complete() {
                     # After --group/-g, complete group names
                     case "$prev" in
                         --group|-g)
-                            COMPREPLY=($(compgen -W "$(_termio_groups)" -- "$cur"))
+                            COMPREPLY=($(compgen -W "$(_okssh_groups)" -- "$cur"))
                             return 0 ;;
                     esac ;;
                 snip|snippets)
                     local snip_sub="${words[$((2 + offset))]}"
                     case "$snip_sub" in
                         run|info|edit|rm|remove)
-                            COMPREPLY=($(compgen -W "$(_termio_snippets)" -- "$cur"))
+                            COMPREPLY=($(compgen -W "$(_okssh_snippets)" -- "$cur"))
                             return 0 ;;
                     esac ;;
                 sync)
@@ -122,7 +122,7 @@ _termio_complete() {
                     local tun_sub="${words[$((2 + offset))]}"
                     case "$tun_sub" in
                         start|stop|rm|remove)
-                            COMPREPLY=($(compgen -W "$(_termio_tunnels)" -- "$cur"))
+                            COMPREPLY=($(compgen -W "$(_okssh_tunnels)" -- "$cur"))
                             return 0 ;;
                         add)
                             # third arg is tunnel name, no completion
@@ -132,7 +132,7 @@ _termio_complete() {
                     local agent_sub="${words[$((2 + offset))]}"
                     case "$agent_sub" in
                         add|rm|remove)
-                            COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                            COMPREPLY=($(compgen -W "$(_okssh_aliases)" -- "$cur"))
                             return 0 ;;
                     esac ;;
                 prefer)
@@ -167,7 +167,7 @@ _termio_complete() {
                     case "$tun_sub" in
                         add)
                             # fourth arg is alias
-                            COMPREPLY=($(compgen -W "$(_termio_aliases)" -- "$cur"))
+                            COMPREPLY=($(compgen -W "$(_okssh_aliases)" -- "$cur"))
                             return 0 ;;
                     esac ;;
             esac ;;
@@ -179,7 +179,7 @@ _termio_complete() {
                         run)
                             case "$prev" in
                                 --group|-g)
-                                    COMPREPLY=($(compgen -W "$(_termio_groups)" -- "$cur"))
+                                    COMPREPLY=($(compgen -W "$(_okssh_groups)" -- "$cur"))
                                     return 0 ;;
                             esac ;;
                     esac ;;
@@ -188,7 +188,7 @@ _termio_complete() {
     return 0
 }
 
-complete -F _termio_complete termio
+complete -F _okssh_complete okssh
 
 fi  # end bash
 
@@ -196,7 +196,7 @@ fi  # end bash
 
 if [ -n "${ZSH_VERSION:-}" ]; then
 
-_termio() {
+_okssh() {
     local state
 
     local -a main_cmds
@@ -300,14 +300,14 @@ _termio() {
 
     case "$state" in
         cmd)
-            _describe 'termio command' main_cmds
+            _describe 'okssh command' main_cmds
             ;;
         args)
             case "${words[2]}" in
                 connect)
                     if (( CURRENT == 3 )); then
                         local -a aliases
-                        aliases=(${(f)"$(_termio_aliases)"})
+                        aliases=(${(f)"$(_okssh_aliases)"})
                         _describe 'alias' aliases
                     else
                         _arguments '--agent[Auto-add key to ssh-agent]' \
@@ -316,13 +316,13 @@ _termio() {
                     ;;
                 info|test|edit|rotate|rm|remove)
                     local -a aliases
-                    aliases=(${(f)"$(_termio_aliases)"})
+                    aliases=(${(f)"$(_okssh_aliases)"})
                     _describe 'alias' aliases
                     ;;
                 run)
                     if (( CURRENT == 3 )); then
                         local -a aliases
-                        aliases=(${(f)"$(_termio_aliases)"})
+                        aliases=(${(f)"$(_okssh_aliases)"})
                         _describe 'alias' aliases
                     fi
                     ;;
@@ -331,7 +331,7 @@ _termio() {
                         _arguments '--group[Filter by group]:group:->grp' '-g[Filter by group]:group:->grp'
                         if [[ "$state" == grp ]]; then
                             local -a groups
-                            groups=(${(f)"$(_termio_groups)"})
+                            groups=(${(f)"$(_okssh_groups)"})
                             _describe 'group' groups
                         fi
                     fi
@@ -343,7 +343,7 @@ _termio() {
                         case "${words[3]}" in
                             run|info|edit|rm|remove)
                                 local -a snips
-                                snips=(${(f)"$(_termio_snippets)"})
+                                snips=(${(f)"$(_okssh_snippets)"})
                                 _describe 'snippet name' snips
                                 ;;
                         esac
@@ -351,7 +351,7 @@ _termio() {
                         _arguments '--group[Filter by group]:group:->grp' '-g[Filter by group]:group:->grp'
                         if [[ "$state" == grp ]]; then
                             local -a groups
-                            groups=(${(f)"$(_termio_groups)"})
+                            groups=(${(f)"$(_okssh_groups)"})
                             _describe 'group' groups
                         fi
                     fi
@@ -372,13 +372,13 @@ _termio() {
                         case "${words[3]}" in
                             start|stop|rm|remove)
                                 local -a tunnels
-                                tunnels=(${(f)"$(_termio_tunnels)"})
+                                tunnels=(${(f)"$(_okssh_tunnels)"})
                                 _describe 'tunnel name' tunnels
                                 ;;
                         esac
                     elif (( CURRENT == 5 )) && [[ "${words[3]}" == "add" ]]; then
                         local -a aliases
-                        aliases=(${(f)"$(_termio_aliases)"})
+                        aliases=(${(f)"$(_okssh_aliases)"})
                         _describe 'alias' aliases
                     fi
                     ;;
@@ -389,7 +389,7 @@ _termio() {
                         case "${words[3]}" in
                             add|rm|remove)
                                 local -a aliases
-                                aliases=(${(f)"$(_termio_aliases)"})
+                                aliases=(${(f)"$(_okssh_aliases)"})
                                 _describe 'alias' aliases
                                 ;;
                         esac
@@ -400,7 +400,7 @@ _termio() {
                         local -a all_pref_opts
                         all_pref_opts=("$pref_opts[@]")
                         local -a aliases
-                        aliases=(${(f)"$(_termio_aliases)"})
+                        aliases=(${(f)"$(_okssh_aliases)"})
                         _describe 'preference or alias' all_pref_opts
                         _describe 'alias (per-alias prefs)' aliases
                     elif (( CURRENT == 4 )); then
@@ -428,6 +428,6 @@ _termio() {
     esac
 }
 
-compdef _termio termio
+compdef _okssh okssh
 
 fi  # end zsh
