@@ -819,6 +819,13 @@ _bootstrap_list() {
     printf '\n'
 }
 
+_bootstrap_list_names() {
+    awk '/^Host / && !/[*?]/ {print $2}' "$CONFIG_FILE" 2>/dev/null | \
+    while IFS= read -r _bln; do
+        [ -n "$(pref_get "bootstrap_$_bln" "")" ] && printf '%s\n' "$_bln"
+    done
+}
+
 # Ephemeral per-session profile injection.  Called from cmd_connect with --profile.
 _connect_with_profile() {
     _cpa="$1"   # alias
@@ -3242,8 +3249,35 @@ cmd_snip() {
         edit)      cmd_snip_edit "${1:-}" ;;
         rm|remove) cmd_snip_rm   "${1:-}" ;;
         run)       cmd_snip_run  "$@" ;;
-        *)         die "Unknown snip subcommand: '$_ssub'  (use: list, add, info, edit, rm, run)" ;;
+        push)      cmd_snip_push "$@" ;;
+        *)         die "Unknown snip subcommand: '$_ssub'  (use: list, add, info, edit, rm, run, push)" ;;
     esac
+}
+
+cmd_snip_push() {
+    if [ "$#" -gt 0 ]; then
+        set -- "$@"
+    else
+        _psp_names=$(_bootstrap_list_names)
+        [ -z "$_psp_names" ] && { warn "No bootstrapped aliases to push to."; return 1; }
+        set -- $_psp_names
+    fi
+    printf '\n'
+    _psp_any_fail=0
+    for _psp_a in "$@"; do
+        [ -z "$_psp_a" ] && continue
+        printf "  Pushing to ${C_BOLD}%s${C_RESET}… " "$_psp_a"
+        if _bootstrap_push_snips "$_psp_a" 2>/dev/null; then
+            printf "${C_GREEN}✔${C_RESET}\n"
+        else
+            printf "${C_RED}✘${C_RESET}\n"
+            _psp_any_fail=1
+        fi
+    done
+    printf '\n'
+    [ "$_psp_any_fail" -eq 0 ] \
+        && success "Snippets pushed to all selected hosts." \
+        || warn "Some hosts failed — check connectivity."
 }
 
 # ── Whiptail display wrappers ─────────────────────────────────────────────────
@@ -3667,25 +3701,51 @@ Press OK to continue to the confirmation prompt." "$TH" "$TW"
 
 # ── Whiptail snippet submenu ──────────────────────────────────────────────────
 
+_wt_snip_push() {
+    _bnames=$(_bootstrap_list_names)
+    if [ -z "$_bnames" ]; then
+        whiptail --title "okssh — Push Snippets" \
+            --msgbox "No bootstrapped aliases found.\nInstall bootstrap on a host first." 8 52
+        return 0
+    fi
+    set --
+    for _wpn in $_bnames; do
+        _wpdate=$(pref_get "bootstrap_$_wpn" "")
+        set -- "$@" "$_wpn" "(since $_wpdate)" "on"
+    done
+    _selected=$(whiptail --title "okssh — Push Snippets" \
+        --separate-output \
+        --cancel-button "Cancel" \
+        --checklist "Select hosts to push snippet list to:" "$TH" "$TW" 8 \
+        "$@" \
+        3>&1 1>&2 2>&3) || return 0
+    [ -z "$_selected" ] && return 0
+    cmd_snip_push $_selected
+}
+
 _wt_snip_menu() {
     while true; do
         _sc=$(whiptail --title "okssh — Snippets" \
             --cancel-button "Back" \
-            --menu "Reusable remote commands:" "$TH" "$TW" 6 \
-            "list" "  List all snippets" \
-            "add"  "  Add a new snippet" \
-            "run"  "  Run a snippet on host(s)" \
-            "info" "  Show snippet details" \
-            "edit" "  Edit a snippet" \
-            "rm"   "  Remove a snippet" \
+            --menu "Reusable remote commands:" "$TH" "$TW" 8 \
+            "list"      "  List all snippets" \
+            "add"       "  Add a new snippet" \
+            "run"       "  Run a snippet on host(s)" \
+            "info"      "  Show snippet details" \
+            "edit"      "  Edit a snippet" \
+            "rm"        "  Remove a snippet" \
+            "push"      "  Push snippet list to host(s)" \
+            "bootstrap" "  Bootstrap ▶  — install/manage widget on remote hosts" \
             3>&1 1>&2 2>&3) || break
         case "$_sc" in
-            list) wt_snip_list ;;
-            add)  cmd_snip_add ;;
-            run)  wt_pick_snippet "Select snippet to run:"    && cmd_snip_run  "$SELECTED_SNIPPET" ;;
-            info) wt_pick_snippet "Select snippet for info:"  && wt_show_snip_info "$SELECTED_SNIPPET" ;;
-            edit) wt_pick_snippet "Select snippet to edit:"   && cmd_snip_edit "$SELECTED_SNIPPET" ;;
-            rm)   wt_pick_snippet "Select snippet to remove:" && cmd_snip_rm   "$SELECTED_SNIPPET" ;;
+            list)      wt_snip_list ;;
+            add)       cmd_snip_add ;;
+            run)       wt_pick_snippet "Select snippet to run:"    && cmd_snip_run  "$SELECTED_SNIPPET" ;;
+            info)      wt_pick_snippet "Select snippet for info:"  && wt_show_snip_info "$SELECTED_SNIPPET" ;;
+            edit)      wt_pick_snippet "Select snippet to edit:"   && cmd_snip_edit "$SELECTED_SNIPPET" ;;
+            rm)        wt_pick_snippet "Select snippet to remove:" && cmd_snip_rm   "$SELECTED_SNIPPET" ;;
+            push)      _wt_snip_push ;;
+            bootstrap) _wt_bootstrap_menu ;;
             "") break ;;
         esac
     done
@@ -5039,7 +5099,7 @@ interactive_menu() {
             _title=$(_wt_title)
             CHOICE=$(whiptail --title "$_title" \
                 --cancel-button "Exit" \
-                --menu "Choose an action:" "$TH" "$TW" 15 \
+                --menu "Choose an action:" "$TH" "$TW" 14 \
                 "connect"   "  Connect to a saved alias" \
                 "add"       "  Add a new SSH alias" \
                 "info"      "  Show alias details" \
@@ -5047,9 +5107,8 @@ interactive_menu() {
                 "status"    "  Status dashboard — all connections" \
                 "run"       "  Run a one-off remote command" \
                 "copy"      "  Copy files to/from alias (sftp)" \
-                "bootstrap" "  Bootstrap ▶  — install/sync snippet widget on remotes" \
                 "manage"    "  Manage ▶  (edit / rotate / audit / rm / export)" \
-                "snip"      "  Snippets ▶  — reusable remote commands" \
+                "snip"      "  Snippets ▶  — reusable commands + bootstrap" \
                 "tunnel"    "  Tunnels ▶  — named port-forward profiles" \
                 "agent"     "  Agent ▶  — SSH key agent management" \
                 "sync"      "  Sync ▶  — mirror to NAS / cloud / USB" \
@@ -5106,9 +5165,8 @@ interactive_menu() {
                                 "$(printf '%s\n%s' "$_wt_hdr" "$_wt_out")"
                         fi
                     fi ;;
-                copy)      cmd_copy_wizard ;;
-                bootstrap) _wt_bootstrap_menu ;;
-                manage)    _wt_manage_menu ;;
+                copy)   cmd_copy_wizard ;;
+                manage) _wt_manage_menu ;;
                 tunnel) _wt_tunnel_menu ;;
                 agent)  _wt_agent_menu ;;
                 snip)   _wt_snip_menu ;;
@@ -5143,9 +5201,8 @@ interactive_menu() {
             printf "  ${C_LBLUE}${C_BOLD}── Tools ────────────────────────────────────────${C_RESET}\n"
             printf "  ${C_BOLD}tu)${C_RESET} Tunnels — named port-forward profiles\n"
             printf "  ${C_BOLD}ag)${C_RESET} Agent — SSH key agent management\n"
-            printf "  ${C_BOLD}sn)${C_RESET} Snippets — reusable remote commands\n"
+            printf "  ${C_BOLD}sn)${C_RESET} Snippets — reusable commands + bootstrap\n"
             printf "  ${C_BOLD}sy)${C_RESET} Sync — mirror to NAS / cloud / USB\n"
-            printf "  ${C_BOLD}bs)${C_RESET} Bootstrap — deploy snippet widget to remote hosts\n"
             printf "  ${C_BOLD} p)${C_RESET} Preferences\n"
             printf "  ${C_BOLD} h)${C_RESET} Help\n"
             printf "  ${C_BOLD} q)${C_RESET} Quit\n\n"
@@ -5305,6 +5362,8 @@ interactive_menu() {
                         printf "  ${C_BOLD}4)${C_RESET} Snippet details\n"
                         printf "  ${C_BOLD}5)${C_RESET} Edit a snippet\n"
                         printf "  ${C_BOLD}6)${C_RESET} Remove a snippet\n"
+                        printf "  ${C_BOLD}7)${C_RESET} Push snippet list to hosts\n"
+                        printf "  ${C_BOLD}bs)${C_RESET} Bootstrap → manage widget on remote hosts\n"
                         printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
                         cli_prompt "Choice" ""
                         case "$_PROMPT_RESULT" in
@@ -5326,6 +5385,57 @@ interactive_menu() {
                                 cmd_snip_list
                                 cli_prompt "Snippet name to remove" ""
                                 [ -n "$_PROMPT_RESULT" ] && cmd_snip_rm "$_PROMPT_RESULT" ;;
+                            7|push)
+                                _bnames=$(_bootstrap_list_names)
+                                if [ -z "$_bnames" ]; then
+                                    warn "No bootstrapped aliases found."
+                                else
+                                    printf '\n'
+                                    printf '%s\n' "$_bnames"
+                                    printf '\n'
+                                    cli_prompt "Alias to push to (blank = all)" ""
+                                    if [ -z "$_PROMPT_RESULT" ]; then
+                                        cmd_snip_push
+                                    else
+                                        cmd_snip_push "$_PROMPT_RESULT"
+                                    fi
+                                fi ;;
+                            bs|bootstrap)
+                                while true; do
+                                    printf "\n  ${C_LBLUE}${C_BOLD}── Bootstrap ───────────────────────────────────${C_RESET}\n"
+                                    printf "  ${C_BOLD}1)${C_RESET} Install snippet widget on alias\n"
+                                    printf "  ${C_BOLD}2)${C_RESET} Connect with profile (ephemeral session)\n"
+                                    printf "  ${C_BOLD}3)${C_RESET} Sync snippets to alias\n"
+                                    printf "  ${C_BOLD}4)${C_RESET} Remove snippet widget from alias\n"
+                                    printf "  ${C_BOLD}5)${C_RESET} List aliases with snippet widget\n"
+                                    printf "  ${C_BOLD}6)${C_RESET} Enable auto-bootstrap prompt on connect\n"
+                                    printf "  ${C_BOLD}7)${C_RESET} Disable auto-bootstrap prompt\n"
+                                    printf "  ${C_BOLD}b)${C_RESET} Back\n\n"
+                                    cli_prompt "Choice" ""
+                                    case "$_PROMPT_RESULT" in
+                                        1|install)
+                                            cmd_list
+                                            cli_prompt "Alias to bootstrap" ""
+                                            [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap "$_PROMPT_RESULT" ;;
+                                        2|connect)
+                                            cmd_list
+                                            cli_prompt "Alias for profile session" ""
+                                            [ -n "$_PROMPT_RESULT" ] && cmd_connect --profile "$_PROMPT_RESULT" ;;
+                                        3|update|push)
+                                            cmd_list
+                                            cli_prompt "Alias to push updated snippets to" ""
+                                            [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap update "$_PROMPT_RESULT" ;;
+                                        4|remove)
+                                            cmd_list
+                                            cli_prompt "Alias to remove profile from" ""
+                                            [ -n "$_PROMPT_RESULT" ] && cmd_bootstrap remove "$_PROMPT_RESULT" ;;
+                                        5|list) cmd_bootstrap list ;;
+                                        6|auto_on)  pref_set "auto_bootstrap" "1"; success "Auto-bootstrap enabled." ;;
+                                        7|auto_off) pref_set "auto_bootstrap" "0"; success "Auto-bootstrap disabled." ;;
+                                        b|back|"") break ;;
+                                        *) warn "Unknown option." ;;
+                                    esac
+                                done ;;
                             b|back|"") break ;;
                             *) warn "Unknown option." ;;
                         esac
