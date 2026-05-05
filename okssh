@@ -3285,6 +3285,7 @@ cmd_snip_push() {
     fi
     printf '\n'
     _psp_any_fail=0
+    _psp_failed=""
     for _psp_a in "$@"; do
         [ -z "$_psp_a" ] && continue
         printf "  Pushing to ${C_BOLD}%s${C_RESET}… " "$_psp_a"
@@ -3292,13 +3293,21 @@ cmd_snip_push() {
             printf "${C_GREEN}✔${C_RESET}\n"
         else
             printf "${C_RED}✘${C_RESET}\n"
+            _psp_failed="${_psp_failed:+${_psp_failed}
+  }$_psp_a"
             _psp_any_fail=1
         fi
     done
     printf '\n'
-    [ "$_psp_any_fail" -eq 0 ] \
-        && success "Snippets pushed to all selected hosts." \
-        || warn "Some hosts failed — check connectivity."
+    if [ "$_psp_any_fail" -eq 0 ]; then
+        success "Snippets pushed to all selected hosts."
+    else
+        warn "Failed hosts (check connectivity / bootstrap status):"
+        printf '%s\n' "$_psp_failed" | while IFS= read -r _f; do
+            printf "  ${C_RED}✘${C_RESET}  %s\n" "$_f"
+        done
+        printf '\n'
+    fi
 }
 
 # ── Whiptail display wrappers ─────────────────────────────────────────────────
